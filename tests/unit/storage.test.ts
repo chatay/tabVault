@@ -82,6 +82,63 @@ describe('StorageService', () => {
     });
   });
 
+  describe('deleteTabGroups (bulk)', () => {
+    it('deletes multiple groups at once', async () => {
+      const makeGroup = (id: string): TabGroup => ({
+        id,
+        name: `Group ${id}`,
+        tabs: [],
+        isAutoSave: false,
+        deviceId: 'device_abc',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      await storage.saveTabGroup(makeGroup('g1'));
+      await storage.saveTabGroup(makeGroup('g2'));
+      await storage.saveTabGroup(makeGroup('g3'));
+
+      await storage.deleteTabGroups(['g1', 'g3']);
+      const groups = await storage.getTabGroups();
+      expect(groups).toHaveLength(1);
+      expect(groups[0].id).toBe('g2');
+    });
+
+    it('handles empty array without error', async () => {
+      const group: TabGroup = {
+        id: 'g1',
+        name: 'Keep',
+        tabs: [],
+        isAutoSave: false,
+        deviceId: 'device_abc',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await storage.saveTabGroup(group);
+
+      await storage.deleteTabGroups([]);
+      const groups = await storage.getTabGroups();
+      expect(groups).toHaveLength(1);
+    });
+
+    it('ignores nonexistent IDs gracefully', async () => {
+      const group: TabGroup = {
+        id: 'g1',
+        name: 'Keep',
+        tabs: [],
+        isAutoSave: false,
+        deviceId: 'device_abc',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await storage.saveTabGroup(group);
+
+      await storage.deleteTabGroups(['nonexistent', 'also-fake']);
+      const groups = await storage.getTabGroups();
+      expect(groups).toHaveLength(1);
+      expect(groups[0].id).toBe('g1');
+    });
+  });
+
   describe('getSettings', () => {
     it('returns defaults when no settings exist', async () => {
       const settings = await storage.getSettings();

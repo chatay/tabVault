@@ -29,6 +29,13 @@ export class StorageService {
     await chrome.storage.local.set({ [STORAGE_KEY_TAB_GROUPS]: filtered });
   }
 
+  async deleteTabGroups(groupIds: string[]): Promise<void> {
+    const idSet = new Set(groupIds);
+    const groups = await this.getTabGroups();
+    const filtered = groups.filter((g) => !idSet.has(g.id));
+    await chrome.storage.local.set({ [STORAGE_KEY_TAB_GROUPS]: filtered });
+  }
+
   async getSettings(): Promise<UserSettings> {
     const result = await chrome.storage.local.get(STORAGE_KEY_SETTINGS);
     return { ...DEFAULT_SETTINGS, ...result[STORAGE_KEY_SETTINGS] };

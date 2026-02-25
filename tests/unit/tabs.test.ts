@@ -6,6 +6,7 @@ import type { TabGroup, SavedTab } from '@/lib/types';
 const mockChromeTabs = {
   query: vi.fn<(queryInfo: chrome.tabs.QueryInfo) => Promise<chrome.tabs.Tab[]>>(),
   create: vi.fn<(createProperties: chrome.tabs.CreateProperties) => Promise<chrome.tabs.Tab>>(),
+  remove: vi.fn<(tabIds: number | number[]) => Promise<void>>(),
 };
 
 // Attach chrome.tabs to the global chrome mock
@@ -16,11 +17,14 @@ beforeEach(() => {
   // @ts-expect-error -- extending the existing chrome mock
   globalThis.chrome.runtime = {
     getPlatformInfo: vi.fn(async () => ({ os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' })),
+    getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
   };
 
   mockChromeTabs.query.mockReset();
   mockChromeTabs.create.mockReset();
+  mockChromeTabs.remove.mockReset();
   mockChromeTabs.create.mockResolvedValue({} as chrome.tabs.Tab);
+  mockChromeTabs.remove.mockResolvedValue(undefined);
 });
 
 // Mock crypto.randomUUID to return predictable values
@@ -75,13 +79,13 @@ function makeTabGroup(overrides: Partial<TabGroup> = {}): TabGroup {
 
 describe('TabService', () => {
   describe('saveCurrentTabs', () => {
-    it('saves all tabs from current window', async () => {
+    it('saves all tabs from current window and closes them', async () => {
       const storage = makeStorage();
       const service = new TabService(storage, 'device-1');
 
       mockChromeTabs.query.mockResolvedValue([
-        { url: 'https://example.com', title: 'Example', favIconUrl: 'https://example.com/icon.png' } as chrome.tabs.Tab,
-        { url: 'https://google.com', title: 'Google', favIconUrl: null } as chrome.tabs.Tab,
+        { id: 1, url: 'https://example.com', title: 'Example', favIconUrl: 'https://example.com/icon.png' } as chrome.tabs.Tab,
+        { id: 2, url: 'https://google.com', title: 'Google', favIconUrl: null } as chrome.tabs.Tab,
       ]);
 
       const group = await service.saveCurrentTabs();
@@ -110,22 +114,26 @@ describe('TabService', () => {
       const saved = await storage.getTabGroups();
       expect(saved).toHaveLength(1);
       expect(saved[0].id).toBe(group.id);
+
+      // Verify tabs were closed: opens TabVault full view, then removes the saved ones
+      expect(mockChromeTabs.create).toHaveBeenCalledWith({ url: chrome.runtime.getURL('/tabs.html'), active: true });
+      expect(mockChromeTabs.remove).toHaveBeenCalledWith([1, 2]);
     });
 
-    it('filters out chrome://, edge://, brave://, about: URLs', async () => {
+    it('filters out chrome://, edge://, brave://, about: URLs and only closes saveable tabs', async () => {
       const storage = makeStorage();
       const service = new TabService(storage, 'device-1');
 
       mockChromeTabs.query.mockResolvedValue([
-        { url: 'https://valid.com', title: 'Valid' } as chrome.tabs.Tab,
-        { url: 'chrome://extensions', title: 'Extensions' } as chrome.tabs.Tab,
-        { url: 'edge://settings', title: 'Edge Settings' } as chrome.tabs.Tab,
-        { url: 'brave://flags', title: 'Brave Flags' } as chrome.tabs.Tab,
-        { url: 'about:blank', title: 'Blank' } as chrome.tabs.Tab,
-        { url: 'opera://settings', title: 'Opera' } as chrome.tabs.Tab,
-        { url: 'chrome-extension://abc/popup.html', title: 'Extension' } as chrome.tabs.Tab,
+        { id: 1, url: 'https://valid.com', title: 'Valid' } as chrome.tabs.Tab,
+        { id: 2, url: 'chrome://extensions', title: 'Extensions' } as chrome.tabs.Tab,
+        { id: 3, url: 'edge://settings', title: 'Edge Settings' } as chrome.tabs.Tab,
+        { id: 4, url: 'brave://flags', title: 'Brave Flags' } as chrome.tabs.Tab,
+        { id: 5, url: 'about:blank', title: 'Blank' } as chrome.tabs.Tab,
+        { id: 6, url: 'opera://settings', title: 'Opera' } as chrome.tabs.Tab,
+        { id: 7, url: 'chrome-extension://abc/popup.html', title: 'Extension' } as chrome.tabs.Tab,
         { url: undefined, title: 'No URL' } as chrome.tabs.Tab,
-        { url: 'https://also-valid.com', title: 'Also Valid' } as chrome.tabs.Tab,
+        { id: 9, url: 'https://also-valid.com', title: 'Also Valid' } as chrome.tabs.Tab,
       ]);
 
       const group = await service.saveCurrentTabs();
@@ -133,14 +141,17 @@ describe('TabService', () => {
       expect(group.tabs).toHaveLength(2);
       expect(group.tabs[0].url).toBe('https://valid.com');
       expect(group.tabs[1].url).toBe('https://also-valid.com');
+
+      // Only the saveable tabs (1 and 9) should be closed
+      expect(mockChromeTabs.remove).toHaveBeenCalledWith([1, 9]);
     });
 
-    it('with isAutoSave: true creates auto-save group', async () => {
+    it('with isAutoSave: true creates auto-save group and does NOT close tabs', async () => {
       const storage = makeStorage();
       const service = new TabService(storage, 'device-1');
 
       mockChromeTabs.query.mockResolvedValue([
-        { url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
+        { id: 1, url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
       ]);
 
       const group = await service.saveCurrentTabs({ isAutoSave: true });
@@ -148,6 +159,9 @@ describe('TabService', () => {
       expect(group.isAutoSave).toBe(true);
       expect(group.name).toContain('Auto-save');
       expect(group.name).not.toContain('Session');
+
+      // Auto-save should NOT close tabs
+      expect(mockChromeTabs.remove).not.toHaveBeenCalled();
     });
   });
 

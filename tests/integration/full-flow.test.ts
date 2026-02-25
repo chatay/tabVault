@@ -17,6 +17,7 @@ import {
 const mockChromeTabs = {
   query: vi.fn<(q: chrome.tabs.QueryInfo) => Promise<chrome.tabs.Tab[]>>(),
   create: vi.fn<(p: chrome.tabs.CreateProperties) => Promise<chrome.tabs.Tab>>(),
+  remove: vi.fn<(ids: number | number[]) => Promise<void>>(),
 };
 
 const mockChromeAction = {
@@ -28,6 +29,7 @@ const mockChromeRuntime = {
   onInstalled: { addListener: vi.fn() },
   onStartup: { addListener: vi.fn() },
   getPlatformInfo: vi.fn(async () => ({ os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' })),
+  getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
 };
 
 const mockChromeAlarms = {
@@ -48,7 +50,9 @@ beforeEach(() => {
 
   mockChromeTabs.query.mockReset();
   mockChromeTabs.create.mockReset();
+  mockChromeTabs.remove.mockReset();
   mockChromeTabs.create.mockResolvedValue({} as chrome.tabs.Tab);
+  mockChromeTabs.remove.mockResolvedValue(undefined);
   mockChromeAction.setBadgeText.mockClear();
   mockChromeAction.setBadgeBackgroundColor.mockClear();
 });

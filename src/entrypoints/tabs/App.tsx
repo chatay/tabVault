@@ -13,6 +13,8 @@ export default function App() {
   const [tabService, setTabService] = useState<TabService | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
 
   // Initialize TabService with device ID
   useEffect(() => {
@@ -98,6 +100,33 @@ export default function App() {
     tabService?.renameGroup(groupId, newName);
   }
 
+  // Toggle group selection
+  function handleToggleSelect(groupId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }
+
+  // Bulk delete selected groups
+  async function handleDeleteSelected() {
+    if (selectedIds.size === 0) return;
+    await storageService.deleteTabGroups([...selectedIds]);
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+  }
+
+  // Exit select mode
+  function handleCancelSelect() {
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+  }
+
   const isSearching = searchQuery.trim().length > 0;
   const hasNoResults = isSearching && filteredGroups.length === 0;
 
@@ -106,11 +135,45 @@ export default function App() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">TabVault</h1>
-        <span className="text-sm text-gray-500">
-          {groups.length} {groups.length === 1 ? 'group' : 'groups'} &middot;{' '}
-          {totalTabs} {totalTabs === 1 ? 'tab' : 'tabs'}
-        </span>
+        <div className="flex items-center gap-4">
+          {!isSelectMode && groups.length > 0 && (
+            <button
+              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => setIsSelectMode(true)}
+            >
+              Select
+            </button>
+          )}
+          <span className="text-sm text-gray-500">
+            {groups.length} {groups.length === 1 ? 'group' : 'groups'} &middot;{' '}
+            {totalTabs} {totalTabs === 1 ? 'tab' : 'tabs'}
+          </span>
+        </div>
       </div>
+
+      {/* Selection toolbar */}
+      {isSelectMode && (
+        <div className="flex items-center justify-between mb-4 px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
+          <span className="text-sm text-gray-700">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              className="text-sm text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0}
+            >
+              Delete
+            </button>
+            <button
+              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={handleCancelSelect}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-6">
@@ -127,7 +190,7 @@ export default function App() {
       {/* My Saved Groups */}
       {manualGroups.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <h2 className="text-sm font-bold text-gray-700 mb-2">
             My Saved Groups
           </h2>
           {manualGroups.map((group) => (
@@ -139,6 +202,8 @@ export default function App() {
               onDeleteTab={handleDeleteTab}
               onDeleteGroup={handleDeleteGroup}
               onRenameGroup={handleRenameGroup}
+              isSelected={selectedIds.has(group.id)}
+              onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
             />
           ))}
         </div>
@@ -147,7 +212,7 @@ export default function App() {
       {/* Auto-saved -- show ALL, not limited like popup */}
       {autoGroups.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <h2 className="text-sm font-bold text-gray-700 mb-2">
             Auto-saved
           </h2>
           {autoGroups.map((group) => (
@@ -159,6 +224,8 @@ export default function App() {
               onDeleteTab={handleDeleteTab}
               onDeleteGroup={handleDeleteGroup}
               onRenameGroup={handleRenameGroup}
+              isSelected={selectedIds.has(group.id)}
+              onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
             />
           ))}
         </div>

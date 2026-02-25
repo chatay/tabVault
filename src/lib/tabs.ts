@@ -35,16 +35,16 @@ export class TabService {
     const timestamp = formatTimestamp(new Date(now));
     const prefix = isAutoSave ? 'Auto-save' : 'Session';
 
-    const tabs: SavedTab[] = chromeTabs
-      .filter((tab) => isValidTabUrl(tab.url))
-      .map((tab, index) => ({
-        id: crypto.randomUUID(),
-        url: tab.url!,
-        title: tab.title || tab.url!,
-        faviconUrl: tab.favIconUrl || null,
-        position: index,
-        createdAt: now,
-      }));
+    const saveable = chromeTabs.filter((tab) => isValidTabUrl(tab.url));
+
+    const tabs: SavedTab[] = saveable.map((tab, index) => ({
+      id: crypto.randomUUID(),
+      url: tab.url!,
+      title: tab.title || tab.url!,
+      faviconUrl: tab.favIconUrl || null,
+      position: index,
+      createdAt: now,
+    }));
 
     const group: TabGroup = {
       id: crypto.randomUUID(),
@@ -57,6 +57,21 @@ export class TabService {
     };
 
     await this.storage.saveTabGroup(group);
+
+    // Close saved tabs (manual saves only — auto-save should not disrupt the user)
+    if (!isAutoSave && saveable.length > 0) {
+      const tabIdsToClose = saveable
+        .map((t) => t.id)
+        .filter((id): id is number => id !== undefined);
+
+      // Open TabVault full view so the user sees their saved tabs
+      await chrome.tabs.create({ url: chrome.runtime.getURL('/tabs.html'), active: true });
+
+      if (tabIdsToClose.length > 0) {
+        await chrome.tabs.remove(tabIdsToClose);
+      }
+    }
+
     return group;
   }
 

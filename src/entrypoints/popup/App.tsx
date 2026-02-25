@@ -18,6 +18,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
 
   // Initialize TabService with device ID and check auth status
   useEffect(() => {
@@ -115,6 +117,33 @@ export default function App() {
     tabService?.renameGroup(groupId, newName);
   }
 
+  // Toggle group selection
+  function handleToggleSelect(groupId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }
+
+  // Bulk delete selected groups
+  async function handleDeleteSelected() {
+    if (selectedIds.size === 0) return;
+    await storageService.deleteTabGroups([...selectedIds]);
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+  }
+
+  // Exit select mode
+  function handleCancelSelect() {
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+  }
+
   // Split groups into manual and auto-save
   const manualGroups = groups.filter((g) => !g.isAutoSave);
   const autoGroups = groups.filter((g) => g.isAutoSave);
@@ -134,14 +163,48 @@ export default function App() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-lg font-bold">TabVault</h1>
-        <button
-          className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={handleSaveTabs}
-          disabled={saving || !tabService}
-        >
-          {saving ? 'Saving...' : 'Save Tabs'}
-        </button>
+        <div className="flex items-center gap-2">
+          {!isSelectMode && groups.length > 0 && (
+            <button
+              className="text-xs text-gray-500 hover:text-gray-700"
+              onClick={() => setIsSelectMode(true)}
+            >
+              Select
+            </button>
+          )}
+          <button
+            className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleSaveTabs}
+            disabled={saving || !tabService}
+          >
+            {saving ? 'Saving...' : 'Save Tabs'}
+          </button>
+        </div>
       </div>
+
+      {/* Selection toolbar */}
+      {isSelectMode && (
+        <div className="flex items-center justify-between mb-3 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+          <span className="text-sm text-gray-700">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              className="text-sm text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0}
+            >
+              Delete
+            </button>
+            <button
+              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={handleCancelSelect}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Auth Prompt */}
       {showAuthPrompt && (
@@ -161,7 +224,7 @@ export default function App() {
       {/* My Saved Groups */}
       {manualGroups.length > 0 && (
         <div className="mb-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <h2 className="text-sm font-bold text-gray-700 mb-2">
             My Saved Groups
           </h2>
           {manualGroups.map((group) => (
@@ -173,6 +236,8 @@ export default function App() {
               onDeleteTab={handleDeleteTab}
               onDeleteGroup={handleDeleteGroup}
               onRenameGroup={handleRenameGroup}
+              isSelected={selectedIds.has(group.id)}
+              onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
             />
           ))}
         </div>
@@ -181,7 +246,7 @@ export default function App() {
       {/* Auto-saved */}
       {visibleAutoGroups.length > 0 && (
         <div className="mb-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <h2 className="text-sm font-bold text-gray-700 mb-2">
             Auto-saved
           </h2>
           {visibleAutoGroups.map((group) => (
@@ -193,6 +258,8 @@ export default function App() {
               onDeleteTab={handleDeleteTab}
               onDeleteGroup={handleDeleteGroup}
               onRenameGroup={handleRenameGroup}
+              isSelected={selectedIds.has(group.id)}
+              onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
             />
           ))}
         </div>

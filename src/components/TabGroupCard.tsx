@@ -9,6 +9,8 @@ interface TabGroupCardProps {
   onDeleteTab: (groupId: string, tabId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onRenameGroup: (groupId: string, newName: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (groupId: string) => void;
 }
 
 export function TabGroupCard({
@@ -18,6 +20,8 @@ export function TabGroupCard({
   onDeleteTab,
   onDeleteGroup,
   onRenameGroup,
+  isSelected = false,
+  onToggleSelect,
 }: TabGroupCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -41,9 +45,19 @@ export function TabGroupCard({
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg p-3 mb-2">
+    <div className={`border rounded-lg p-3 mb-2 ${isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2">
+        {/* Selection checkbox */}
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect(group.id)}
+            className="rounded shrink-0"
+          />
+        )}
+
         {/* Expand/Collapse + Name */}
         <button
           className="flex-1 flex items-center gap-2 text-left min-w-0"
