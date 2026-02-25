@@ -34,6 +34,10 @@ const chromeStorageMock = {
 // @ts-expect-error -- mocking global chrome
 globalThis.chrome = { storage: chromeStorageMock };
 
+// Mock WXT auto-imports (defineBackground runs the callback immediately)
+// @ts-expect-error -- mocking WXT global
+globalThis.defineBackground = (fn: () => void) => fn();
+
 // Reset store between tests
 beforeEach(() => {
   for (const key of Object.keys(store)) delete store[key];
