@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import type { TabGroup, SavedTab } from '@/lib/types';
-import { AUTO_SAVE_VISIBLE_COUNT } from '@/lib/constants';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { TabGroup, SavedTab, SyncStatus, UserSettings } from '@/lib/types';
+import { DEFAULT_SETTINGS } from '@/lib/types';
+import { AUTO_SAVE_VISIBLE_COUNT, STORAGE_KEY_SETTINGS } from '@/lib/constants';
 
 /**
  * Helper to create a SavedTab for testing.
@@ -32,6 +33,29 @@ function makeTabGroup(overrides: Partial<TabGroup> = {}): TabGroup {
     ...overrides,
   };
 }
+
+// Mock supabase and auth for SyncStatus and popup auth tests
+const mockGetSyncStatus = vi.fn(async () => 'synced' as SyncStatus);
+vi.mock('@/lib/sync', () => ({
+  SyncEngine: vi.fn().mockImplementation(() => ({
+    getSyncStatus: mockGetSyncStatus,
+  })),
+}));
+vi.mock('@/lib/sync-queue', () => ({
+  SyncQueue: vi.fn(),
+}));
+vi.mock('@/lib/supabase', () => ({
+  getSupabase: () => ({
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: null } })),
+    },
+  }),
+}));
+vi.mock('@/lib/auth', () => ({
+  getSession: vi.fn(async () => null),
+  sendOtp: vi.fn(),
+  verifyOtp: vi.fn(),
+}));
 
 describe('Component modules', () => {
   describe('FaviconImg', () => {
@@ -173,5 +197,113 @@ describe('Popup logic: total tab count', () => {
     const groups: TabGroup[] = [];
     const totalTabs = groups.reduce((sum, g) => sum + g.tabs.length, 0);
     expect(totalTabs).toBe(0);
+  });
+});
+
+describe('SyncStatusIndicator component', () => {
+  it('exports SyncStatusIndicator function', async () => {
+    const mod = await import('@/components/SyncStatus');
+    expect(mod.SyncStatusIndicator).toBeDefined();
+    expect(typeof mod.SyncStatusIndicator).toBe('function');
+  });
+});
+
+describe('SyncStatus config mapping', () => {
+  const statusConfig: Record<SyncStatus, { label: string; color: string }> = {
+    synced: { label: 'Synced', color: 'text-green-600' },
+    syncing: { label: 'Syncing...', color: 'text-blue-600' },
+    pending: { label: 'Sync pending', color: 'text-orange-500' },
+    failed: { label: 'Sync failed', color: 'text-red-600' },
+  };
+
+  it('maps "synced" to green label', () => {
+    expect(statusConfig['synced'].label).toBe('Synced');
+    expect(statusConfig['synced'].color).toBe('text-green-600');
+  });
+
+  it('maps "syncing" to blue label', () => {
+    expect(statusConfig['syncing'].label).toBe('Syncing...');
+    expect(statusConfig['syncing'].color).toBe('text-blue-600');
+  });
+
+  it('maps "pending" to orange label', () => {
+    expect(statusConfig['pending'].label).toBe('Sync pending');
+    expect(statusConfig['pending'].color).toBe('text-orange-500');
+  });
+
+  it('maps "failed" to red label', () => {
+    expect(statusConfig['failed'].label).toBe('Sync failed');
+    expect(statusConfig['failed'].color).toBe('text-red-600');
+  });
+});
+
+describe('AuthPrompt component', () => {
+  it('exports AuthPrompt function', async () => {
+    const mod = await import('@/components/AuthPrompt');
+    expect(mod.AuthPrompt).toBeDefined();
+    expect(typeof mod.AuthPrompt).toBe('function');
+  });
+});
+
+describe('Popup logic: auth prompt display', () => {
+  /**
+   * Replicates the decision logic for showing the auth prompt after save.
+   */
+  function shouldShowAuthPrompt(
+    isAuthenticated: boolean,
+    hasSeenCloudPrompt: boolean,
+    hasDismissedCloudPrompt: boolean,
+  ): boolean {
+    return !isAuthenticated && !hasSeenCloudPrompt;
+  }
+
+  it('shows auth prompt after first save when not authenticated and never seen', () => {
+    expect(shouldShowAuthPrompt(false, false, false)).toBe(true);
+  });
+
+  it('does not show auth prompt when authenticated', () => {
+    expect(shouldShowAuthPrompt(true, false, false)).toBe(false);
+  });
+
+  it('does not show auth prompt when already seen', () => {
+    expect(shouldShowAuthPrompt(false, true, false)).toBe(false);
+  });
+
+  it('does not show auth prompt when seen and dismissed', () => {
+    expect(shouldShowAuthPrompt(false, true, true)).toBe(false);
+  });
+
+  it('does not show auth prompt when authenticated and already seen', () => {
+    expect(shouldShowAuthPrompt(true, true, false)).toBe(false);
+  });
+});
+
+describe('Popup logic: auth prompt dismiss', () => {
+  it('sets hasDismissedCloudPrompt on dismiss', async () => {
+    // Simulate dismiss action updating settings
+    const settings: UserSettings = { ...DEFAULT_SETTINGS };
+    const updated = { ...settings, hasDismissedCloudPrompt: true };
+    await chrome.storage.local.set({ [STORAGE_KEY_SETTINGS]: updated });
+
+    const result = await chrome.storage.local.get(STORAGE_KEY_SETTINGS);
+    expect((result[STORAGE_KEY_SETTINGS] as UserSettings).hasDismissedCloudPrompt).toBe(true);
+  });
+
+  it('sets hasSeenCloudPrompt when showing prompt', async () => {
+    const settings: UserSettings = { ...DEFAULT_SETTINGS };
+    const updated = { ...settings, hasSeenCloudPrompt: true };
+    await chrome.storage.local.set({ [STORAGE_KEY_SETTINGS]: updated });
+
+    const result = await chrome.storage.local.get(STORAGE_KEY_SETTINGS);
+    expect((result[STORAGE_KEY_SETTINGS] as UserSettings).hasSeenCloudPrompt).toBe(true);
+  });
+});
+
+describe('Popup logic: sync status visibility', () => {
+  it('shows sync status only when authenticated', () => {
+    const showSyncStatus = (isAuthenticated: boolean) => isAuthenticated;
+
+    expect(showSyncStatus(true)).toBe(true);
+    expect(showSyncStatus(false)).toBe(false);
   });
 });

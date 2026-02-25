@@ -71,6 +71,38 @@ beforeEach(() => {
   });
 });
 
+// --- Mock chrome.action API ---
+const mockChromeAction = {
+  setBadgeText: vi.fn(async () => {}),
+  setBadgeBackgroundColor: vi.fn(async () => {}),
+};
+
+beforeEach(() => {
+  // @ts-expect-error -- extending the existing chrome mock
+  globalThis.chrome.action = mockChromeAction;
+  mockChromeAction.setBadgeText.mockClear();
+  mockChromeAction.setBadgeBackgroundColor.mockClear();
+});
+
+// --- Mock sync modules for sync-retry and badge tests ---
+const mockFlushQueue = vi.fn(async () => ({ succeeded: 0, failed: 0 }));
+const mockGetSyncStatus = vi.fn(async () => 'synced' as const);
+
+vi.mock('@/lib/sync', () => ({
+  SyncEngine: vi.fn().mockImplementation(function () {
+    return {
+      flushQueue: mockFlushQueue,
+      getSyncStatus: mockGetSyncStatus,
+    };
+  }),
+}));
+
+vi.mock('@/lib/sync-queue', () => ({
+  SyncQueue: vi.fn().mockImplementation(function () {
+    return {};
+  }),
+}));
+
 describe('background service worker helpers', () => {
   describe('createAlarms', () => {
     it('creates both auto-save and sync-retry alarms', async () => {
@@ -200,6 +232,53 @@ describe('background service worker helpers', () => {
       const hashResult = await chrome.storage.local.get(STORAGE_KEY_LAST_AUTO_SAVE_HASH);
       const expectedHash = ['https://example.com', 'https://google.com'].sort().join('|');
       expect(hashResult[STORAGE_KEY_LAST_AUTO_SAVE_HASH]).toBe(expectedHash);
+    });
+  });
+
+  describe('updateBadge', () => {
+    it('sets red badge with "!" when sync status is failed', async () => {
+      mockGetSyncStatus.mockResolvedValueOnce('failed');
+
+      const { updateBadge } = await import('@/entrypoints/background');
+
+      await updateBadge();
+
+      expect(mockChromeAction.setBadgeText).toHaveBeenCalledWith({ text: '!' });
+      expect(mockChromeAction.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#EF4444' });
+    });
+
+    it('sets amber badge with "..." when sync status is pending', async () => {
+      mockGetSyncStatus.mockResolvedValueOnce('pending');
+
+      const { updateBadge } = await import('@/entrypoints/background');
+
+      await updateBadge();
+
+      expect(mockChromeAction.setBadgeText).toHaveBeenCalledWith({ text: '...' });
+      expect(mockChromeAction.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#F59E0B' });
+    });
+
+    it('clears badge when sync status is synced', async () => {
+      mockGetSyncStatus.mockResolvedValueOnce('synced');
+
+      const { updateBadge } = await import('@/entrypoints/background');
+
+      await updateBadge();
+
+      expect(mockChromeAction.setBadgeText).toHaveBeenCalledWith({ text: '' });
+    });
+
+    it('uses provided engine instead of creating a new one', async () => {
+      const customEngine = {
+        getSyncStatus: vi.fn(async () => 'failed' as const),
+      };
+
+      const { updateBadge } = await import('@/entrypoints/background');
+
+      await updateBadge(customEngine);
+
+      expect(customEngine.getSyncStatus).toHaveBeenCalled();
+      expect(mockChromeAction.setBadgeText).toHaveBeenCalledWith({ text: '!' });
     });
   });
 });

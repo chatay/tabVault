@@ -2,21 +2,30 @@ import { useCallback, useEffect, useState } from 'react';
 import { StorageService } from '../../lib/storage';
 import { TabService } from '../../lib/tabs';
 import { getOrCreateDeviceId } from '../../lib/device';
+import { getSession } from '../../lib/auth';
 import { AUTO_SAVE_VISIBLE_COUNT, POPUP_WIDTH_PX } from '../../lib/constants';
 import type { TabGroup } from '../../lib/types';
 import { TabGroupCard } from '../../components/TabGroupCard';
+import { AuthPrompt } from '../../components/AuthPrompt';
+import { SyncStatusIndicator } from '../../components/SyncStatus';
 
 export default function App() {
   const [groups, setGroups] = useState<TabGroup[]>([]);
   const [storageService] = useState(() => new StorageService());
   const [tabService, setTabService] = useState<TabService | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
-  // Initialize TabService with device ID
+  // Initialize TabService with device ID and check auth status
   useEffect(() => {
     async function init() {
       const deviceId = await getOrCreateDeviceId();
       setTabService(new TabService(storageService, deviceId));
+
+      // Check if user is authenticated
+      const session = await getSession();
+      setIsAuthenticated(!!session);
     }
     init();
   }, [storageService]);
@@ -49,9 +58,30 @@ export default function App() {
     setSaving(true);
     try {
       await tabService.saveCurrentTabs();
+
+      // Show auth prompt after first save if not authenticated
+      if (!isAuthenticated) {
+        const settings = await storageService.getSettings();
+        if (!settings.hasSeenCloudPrompt) {
+          await storageService.updateSettings({ hasSeenCloudPrompt: true });
+          setShowAuthPrompt(true);
+        }
+      }
     } finally {
       setSaving(false);
     }
+  }
+
+  // Handle auth prompt dismiss
+  async function handleAuthDismiss() {
+    setShowAuthPrompt(false);
+    await storageService.updateSettings({ hasDismissedCloudPrompt: true });
+  }
+
+  // Handle auth success
+  function handleAuthSuccess() {
+    setShowAuthPrompt(false);
+    setIsAuthenticated(true);
   }
 
   // Open a single tab
@@ -107,6 +137,13 @@ export default function App() {
         </button>
       </div>
 
+      {/* Auth Prompt */}
+      {showAuthPrompt && (
+        <div className="mb-4">
+          <AuthPrompt onSuccess={handleAuthSuccess} onDismiss={handleAuthDismiss} />
+        </div>
+      )}
+
       {/* Empty state */}
       {hasNoGroups && (
         <div className="text-center py-8 text-gray-400">
@@ -160,6 +197,12 @@ export default function App() {
         <div className="flex items-center justify-between pt-2 border-t border-gray-100">
           <span className="text-xs text-gray-400">
             {totalTabs} {totalTabs === 1 ? 'tab' : 'tabs'} saved
+            {isAuthenticated && (
+              <>
+                {' '}&middot;{' '}
+                <SyncStatusIndicator />
+              </>
+            )}
           </span>
           <button
             className="text-xs text-blue-600 hover:text-blue-800 hover:underline"

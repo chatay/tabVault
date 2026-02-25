@@ -26,9 +26,18 @@ export default defineBackground(() => {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === ALARM_AUTO_SAVE) {
       await handleAutoSave();
+      // Update badge after auto-save in case sync is needed
+      const { SyncEngine } = await import('../lib/sync');
+      const { SyncQueue } = await import('../lib/sync-queue');
+      const engine = new SyncEngine(new StorageService(), new SyncQueue());
+      await updateBadge(engine);
     }
     if (alarm.name === ALARM_SYNC_RETRY) {
-      // Sync retry will be handled in Phase 3 (Task 13)
+      const { SyncEngine } = await import('../lib/sync');
+      const { SyncQueue } = await import('../lib/sync-queue');
+      const engine = new SyncEngine(new StorageService(), new SyncQueue());
+      await engine.flushQueue();
+      await updateBadge(engine);
     }
   });
 });
@@ -72,4 +81,26 @@ export async function handleAutoSave(): Promise<void> {
   await tabService.saveCurrentTabs({ isAutoSave: true });
 
   await chrome.storage.local.set({ [STORAGE_KEY_LAST_AUTO_SAVE_HASH]: currentHash });
+}
+
+export async function updateBadge(engine?: any): Promise<void> {
+  if (!engine) {
+    const { SyncEngine } = await import('../lib/sync');
+    const { SyncQueue } = await import('../lib/sync-queue');
+    engine = new SyncEngine(new StorageService(), new SyncQueue());
+  }
+  const status = await engine.getSyncStatus();
+
+  switch (status) {
+    case 'failed':
+      await chrome.action.setBadgeText({ text: '!' });
+      await chrome.action.setBadgeBackgroundColor({ color: '#EF4444' });
+      break;
+    case 'pending':
+      await chrome.action.setBadgeText({ text: '...' });
+      await chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
+      break;
+    default:
+      await chrome.action.setBadgeText({ text: '' });
+  }
 }
