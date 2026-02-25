@@ -183,7 +183,7 @@ describe('background service worker helpers', () => {
       await handleAutoSave();
 
       // Should have queried tabs but NOT saved (hash unchanged)
-      expect(mockChromeTabs.query).toHaveBeenCalledWith({});
+      expect(mockChromeTabs.query).toHaveBeenCalledWith({ currentWindow: true });
       // storage.saveTabGroup should not have been called - check no tab groups exist
       const result = await chrome.storage.local.get('tabvault_tab_groups');
       expect(result['tabvault_tab_groups']).toBeUndefined();
@@ -205,7 +205,7 @@ describe('background service worker helpers', () => {
       await handleAutoSave();
 
       // Should have queried all tabs for the hash
-      expect(mockChromeTabs.query).toHaveBeenCalledWith({});
+      expect(mockChromeTabs.query).toHaveBeenCalledWith({ currentWindow: true });
 
       // Should have stored the hash
       const hashResult = await chrome.storage.local.get(STORAGE_KEY_LAST_AUTO_SAVE_HASH);

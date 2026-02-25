@@ -4,7 +4,8 @@ import { TabService } from '../../lib/tabs';
 import { getOrCreateDeviceId } from '../../lib/device';
 import { getSession } from '../../lib/auth';
 import { AUTO_SAVE_VISIBLE_COUNT, POPUP_WIDTH_PX } from '../../lib/constants';
-import type { TabGroup } from '../../lib/types';
+import type { TabGroup, UserSettings } from '../../lib/types';
+import { DEFAULT_SETTINGS } from '../../lib/types';
 import { TabGroupCard } from '../../components/TabGroupCard';
 import { AuthPrompt } from '../../components/AuthPrompt';
 import { SyncStatusIndicator } from '../../components/SyncStatus';
@@ -16,12 +17,17 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
 
   // Initialize TabService with device ID and check auth status
   useEffect(() => {
     async function init() {
       const deviceId = await getOrCreateDeviceId();
       setTabService(new TabService(storageService, deviceId));
+
+      // Load settings
+      const loadedSettings = await storageService.getSettings();
+      setSettings(loadedSettings);
 
       // Check if user is authenticated
       const session = await getSession();
@@ -91,7 +97,7 @@ export default function App() {
 
   // Restore all tabs in a group
   function handleOpenGroup(groupId: string) {
-    tabService?.openGroup(groupId, false);
+    tabService?.openGroup(groupId, settings.restoreBehavior === 'remove');
   }
 
   // Delete a tab from a group

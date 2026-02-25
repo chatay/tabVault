@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StorageService } from '../../lib/storage';
 import { TabService } from '../../lib/tabs';
 import { getOrCreateDeviceId } from '../../lib/device';
-import type { TabGroup } from '../../lib/types';
+import type { TabGroup, UserSettings } from '../../lib/types';
+import { DEFAULT_SETTINGS } from '../../lib/types';
 import { TabGroupCard } from '../../components/TabGroupCard';
 import { SearchBar } from '../../components/SearchBar';
 
@@ -11,12 +12,17 @@ export default function App() {
   const [storageService] = useState(() => new StorageService());
   const [tabService, setTabService] = useState<TabService | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
 
   // Initialize TabService with device ID
   useEffect(() => {
     async function init() {
       const deviceId = await getOrCreateDeviceId();
       setTabService(new TabService(storageService, deviceId));
+
+      // Load settings
+      const loadedSettings = await storageService.getSettings();
+      setSettings(loadedSettings);
     }
     init();
   }, [storageService]);
@@ -74,7 +80,7 @@ export default function App() {
 
   // Restore all tabs in a group
   function handleOpenGroup(groupId: string) {
-    tabService?.openGroup(groupId, false);
+    tabService?.openGroup(groupId, settings.restoreBehavior === 'remove');
   }
 
   // Delete a tab from a group

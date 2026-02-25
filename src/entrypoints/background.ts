@@ -64,7 +64,7 @@ export async function handleAutoSave(): Promise<void> {
 
   if (!settings.autoSaveEnabled) return;
 
-  const chromeTabs = await chrome.tabs.query({});
+  const chromeTabs = await chrome.tabs.query({ currentWindow: true });
   const currentHash = chromeTabs
     .map((t) => t.url)
     .filter(Boolean)
@@ -83,7 +83,7 @@ export async function handleAutoSave(): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_LAST_AUTO_SAVE_HASH]: currentHash });
 }
 
-export async function updateBadge(engine?: any): Promise<void> {
+export async function updateBadge(engine?: { getSyncStatus(): Promise<import('../lib/types').SyncStatus> }): Promise<void> {
   if (!engine) {
     const { SyncEngine } = await import('../lib/sync');
     const { SyncQueue } = await import('../lib/sync-queue');

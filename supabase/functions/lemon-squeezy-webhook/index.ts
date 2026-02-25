@@ -8,12 +8,29 @@ const supabase = createClient(
 
 const WEBHOOK_SECRET = Deno.env.get('LEMON_SQUEEZY_WEBHOOK_SECRET')!;
 
+/** Constant-time string comparison to prevent timing attacks on HMAC signatures. */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    result |= bufA[i] ^ bufB[i];
+  }
+  return result === 0;
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
   }
 
   const signature = req.headers.get('x-signature');
+  if (!signature) {
+    return new Response('Invalid signature', { status: 401 });
+  }
+
   const body = await req.text();
 
   // Verify webhook signature using HMAC SHA-256
@@ -30,7 +47,7 @@ serve(async (req) => {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  if (signature !== expectedSignature) {
+  if (!timingSafeEqual(signature, expectedSignature)) {
     return new Response('Invalid signature', { status: 401 });
   }
 
@@ -39,17 +56,19 @@ serve(async (req) => {
   const email = event.data.attributes.user_email;
 
   if (eventName === 'subscription_created' || eventName === 'subscription_resumed') {
-    await supabase
+    const { error } = await supabase
       .from('profiles')
       .update({ subscription_tier: 'cloud_paid' })
-      .eq('email', email);
+      .ilike('email', email);
+    if (error) console.error('Webhook update failed:', email, error);
   }
 
   if (eventName === 'subscription_cancelled' || eventName === 'subscription_expired') {
-    await supabase
+    const { error } = await supabase
       .from('profiles')
       .update({ subscription_tier: 'cloud_free' })
-      .eq('email', email);
+      .ilike('email', email);
+    if (error) console.error('Webhook downgrade failed:', email, error);
   }
 
   return new Response(JSON.stringify({ received: true }), {
