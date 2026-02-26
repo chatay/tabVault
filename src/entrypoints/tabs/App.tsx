@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StorageService } from '../../lib/storage';
 import { TabService } from '../../lib/tabs';
+import { SyncEngine } from '../../lib/sync';
+import { SyncQueue } from '../../lib/sync-queue';
 import { getOrCreateDeviceId } from '../../lib/device';
-import { getProfile, signOut } from '../../lib/auth';
+import { getProfile, getSession, signOut } from '../../lib/auth';
 import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT } from '../../lib/constants';
 import type { TabGroup, UserSettings, UserProfile } from '../../lib/types';
 import { DEFAULT_SETTINGS } from '../../lib/types';
@@ -47,10 +49,17 @@ export default function App() {
     init();
   }, [storageService]);
 
-  // Load tab groups from storage
+  // Load tab groups from the correct source of truth
   const loadGroups = useCallback(async () => {
-    const loaded = await storageService.getTabGroups();
-    setGroups(loaded);
+    const session = await getSession().catch(() => null);
+    if (session) {
+      const engine = new SyncEngine(storageService, new SyncQueue());
+      const cloudGroups = await engine.pullAllGroups();
+      setGroups(cloudGroups);
+    } else {
+      const loaded = await storageService.getTabGroups();
+      setGroups(loaded);
+    }
   }, [storageService]);
 
   useEffect(() => {
