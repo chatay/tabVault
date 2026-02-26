@@ -15,6 +15,7 @@ const mockSelectChain = {
   eq: vi.fn().mockReturnThis(),
   order: vi.fn().mockResolvedValue({ data: [], error: null }),
 };
+const mockDeviceUpsert = vi.fn().mockResolvedValue({ error: null });
 const mockSupabase = {
   from: vi.fn((table: string) => {
     if (table === 'tab_groups') {
@@ -29,6 +30,9 @@ const mockSupabase = {
         upsert: mockUpsert,
         delete: vi.fn().mockReturnValue({ eq: mockDelete }),
       };
+    }
+    if (table === 'devices') {
+      return { upsert: mockDeviceUpsert };
     }
     return { upsert: mockUpsert };
   }),
@@ -45,6 +49,15 @@ vi.mock('../../src/lib/auth', () => ({
 
 vi.mock('../../src/lib/device', () => ({
   getOrCreateDeviceId: vi.fn(async () => 'device-1'),
+}));
+
+// Mock crypto module — identity functions so existing assertions stay unchanged
+vi.mock('../../src/lib/crypto', () => ({
+  getOrDeriveKey: vi.fn(async () => 'mock-key'),
+  encrypt: vi.fn(async (v: string) => v),
+  decrypt: vi.fn(async (v: string) => v),
+  encryptNullable: vi.fn(async (v: string | null) => v),
+  decryptNullable: vi.fn(async (v: string | null) => v),
 }));
 
 // Now import SyncEngine after mocks are set up
@@ -66,6 +79,7 @@ describe('SyncEngine', () => {
     mockSelectChain.select.mockReturnThis();
     mockSelectChain.eq.mockReturnThis();
     mockSelectChain.order.mockResolvedValue({ data: [], error: null });
+    mockDeviceUpsert.mockResolvedValue({ error: null });
     mockSupabase.from.mockImplementation((table: string) => {
       if (table === 'tab_groups') {
         return {
@@ -79,6 +93,9 @@ describe('SyncEngine', () => {
           upsert: mockUpsert,
           delete: vi.fn().mockReturnValue({ eq: mockDelete }),
         };
+      }
+      if (table === 'devices') {
+        return { upsert: mockDeviceUpsert };
       }
       return { upsert: mockUpsert };
     });

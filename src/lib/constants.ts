@@ -36,7 +36,11 @@ export const STORAGE_KEY_SYNC_QUEUE = 'tabvault_sync_queue';
 export const STORAGE_KEY_LAST_AUTO_SAVE_HASH = 'tabvault_last_auto_save_hash';
 export const STORAGE_KEY_SYNC_FAIL_COUNT = 'tabvault_sync_fail_count';
 export const STORAGE_KEY_FIRST_SYNC_FAIL_AT = 'tabvault_first_sync_fail_at';
+export const STORAGE_KEY_CRYPTO_KEY_PREFIX = 'tabvault_crypto_key_';
 
 // === UI ===
 export const POPUP_WIDTH_PX = 400;
 export const POPUP_MIN_HEIGHT_PX = 300;
+export const TAB_LIST_MAX_HEIGHT_PX = 320;
+export const TAB_GROUP_INITIAL_VISIBLE = 5;
+export const TAB_GROUP_LOAD_MORE_BATCH = 10;

@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import { clearCachedKey } from './crypto';
 import type { UserProfile } from './types';
 import { SubscriptionTier } from './constants';
 
@@ -31,6 +32,10 @@ export async function getSession() {
 }
 
 export async function signOut(): Promise<void> {
+  const session = await getSession();
+  if (session?.user?.id) {
+    await clearCachedKey(session.user.id);
+  }
   const supabase = getSupabase();
   await supabase.auth.signOut();
 }

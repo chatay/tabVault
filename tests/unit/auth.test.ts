@@ -41,6 +41,11 @@ vi.mock('@/lib/supabase', () => ({
   getSupabase: () => mockSupabaseClient,
 }));
 
+// Mock crypto module (signOut now calls clearCachedKey)
+vi.mock('@/lib/crypto', () => ({
+  clearCachedKey: vi.fn(async () => {}),
+}));
+
 describe('auth module', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,12 +142,28 @@ describe('auth module', () => {
 
   describe('signOut', () => {
     it('calls supabase signOut', async () => {
+      mockGetSession.mockResolvedValue({
+        data: { session: { user: { id: 'user-123' } } },
+      });
       mockSignOut.mockResolvedValue({ error: null });
 
       const { signOut } = await import('@/lib/auth');
       await signOut();
 
       expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears cached crypto key before signing out', async () => {
+      mockGetSession.mockResolvedValue({
+        data: { session: { user: { id: 'user-456' } } },
+      });
+      mockSignOut.mockResolvedValue({ error: null });
+
+      const { signOut } = await import('@/lib/auth');
+      const { clearCachedKey } = await import('@/lib/crypto');
+      await signOut();
+
+      expect(clearCachedKey).toHaveBeenCalledWith('user-456');
     });
   });
 

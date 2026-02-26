@@ -1,1 +1,91 @@
 @import "tailwindcss";
+
+/* ─── LIGHT THEME ─── */
+[data-theme="light"] {
+  --bg: #F0F2F5;
+  --surface: #FFFFFF;
+  --surface-2: #F7F8FA;
+  --surface-3: #F0F1F3;
+  --border: #E8EAED;
+  --border-strong: #D1D5DB;
+  --text-primary: #141416;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --accent: #4F6EF7;
+  --accent-soft: #EEF1FE;
+  --accent-hover: #3D5CE5;
+  --warning: #F59E0B;
+  --warning-soft: #FFFBEB;
+  --warning-border: #FCD34D;
+  --warning-text: #92400E;
+  --green: #10B981;
+  --green-soft: #ECFDF5;
+  --red: #EF4444;
+  --red-soft: #FFF5F5;
+  --red-border: #FEE2E2;
+  --highlight: #FEF08A;
+  --highlight-text: #78350F;
+  --tab-item-bg: #FAFBFC;
+  --tab-item-hover: #F3F4F6;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+  --theme-toggle-bg: #F3F4F6;
+}
+
+/* ─── DARK THEME ─── */
+[data-theme="dark"] {
+  --bg: #0F1117;
+  --surface: #1A1D27;
+  --surface-2: #21242F;
+  --surface-3: #272B38;
+  --border: #2E3244;
+  --border-strong: #3D4258;
+  --text-primary: #F1F3F9;
+  --text-secondary: #8B92A9;
+  --text-muted: #5B6178;
+  --accent: #6B8AFF;
+  --accent-soft: #1A2040;
+  --accent-hover: #5A79EE;
+  --warning: #F59E0B;
+  --warning-soft: #1C1608;
+  --warning-border: #78460A;
+  --warning-text: #FCD34D;
+  --green: #34D399;
+  --green-soft: #052E1A;
+  --red: #F87171;
+  --red-soft: #1F0808;
+  --red-border: #3D1515;
+  --highlight: #3D3000;
+  --highlight-text: #FCD34D;
+  --tab-item-bg: #1E2130;
+  --tab-item-hover: #252839;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.3);
+  --theme-toggle-bg: #21242F;
+}
+
+/* ─── BASE ─── */
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }

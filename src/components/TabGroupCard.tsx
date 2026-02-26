@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { TabGroup } from '../lib/types';
 import { TabItem } from './TabItem';
+import {
+  TAB_LIST_MAX_HEIGHT_PX,
+  TAB_GROUP_INITIAL_VISIBLE,
+  TAB_GROUP_LOAD_MORE_BATCH,
+} from '../lib/constants';
 
 interface TabGroupCardProps {
   group: TabGroup;
@@ -26,6 +31,8 @@ export function TabGroupCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
+  const [isHovered, setIsHovered] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(TAB_GROUP_INITIAL_VISIBLE);
 
   function handleRenameSubmit() {
     const trimmed = editName.trim();
@@ -44,29 +51,72 @@ export function TabGroupCard({
     }
   }
 
+  const date = new Date(group.updatedAt);
+  const formattedDate = date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }) + ', ' + date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
   return (
-    <div className={`border rounded-lg p-3 mb-2 ${isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
+    <div
+      className="group/card rounded-[14px] overflow-hidden"
+      style={{
+        background: 'var(--surface)',
+        border: `1px solid ${isExpanded ? 'var(--border-strong)' : 'var(--border)'}`,
+        borderLeft: group.isAutoSave ? '3px solid var(--border-strong)' : undefined,
+        boxShadow: isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+        transition: 'box-shadow 0.15s ease, border-color 0.15s ease, background 0.25s',
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {/* Header */}
-      <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-[10px] cursor-pointer select-none min-h-[56px]"
+        style={{ padding: '14px 16px' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        onClick={() => {
+          const next = !isExpanded;
+          setIsExpanded(next);
+          if (!next) setVisibleCount(TAB_GROUP_INITIAL_VISIBLE);
+        }}
+      >
         {/* Selection checkbox */}
         {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelect(group.id)}
-            className="rounded shrink-0"
-          />
+          <label
+            className="flex items-center justify-center w-[44px] h-[44px] cursor-pointer shrink-0 -ml-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(group.id)}
+              className="w-4 h-4 rounded cursor-pointer"
+              style={{ accentColor: 'var(--accent)' }}
+            />
+          </label>
         )}
 
-        {/* Expand/Collapse + Name */}
-        <button
-          className="flex-1 flex items-center gap-2 text-left min-w-0"
-          onClick={() => setIsExpanded(!isExpanded)}
+        {/* Chevron */}
+        <span
+          className="w-[22px] h-[22px] flex items-center justify-center shrink-0 text-[13px]"
+          style={{
+            color: isExpanded ? 'var(--accent)' : 'var(--text-muted)',
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), color 0.15s',
+            fontStyle: 'normal',
+          }}
         >
-          <span className="text-xs text-gray-400">
-            {isExpanded ? '\u25BC' : '\u25B6'}
-          </span>
+          ›
+        </span>
 
+        {/* Group info */}
+        <div className="flex-1 min-w-0">
           {isEditing ? (
             <input
               type="text"
@@ -75,66 +125,170 @@ export function TabGroupCard({
               onBlur={handleRenameSubmit}
               onKeyDown={handleKeyDown}
               onClick={(e) => e.stopPropagation()}
-              className="flex-1 text-sm font-medium border border-blue-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-blue-400"
+              className="w-full text-[14px] font-semibold rounded-lg px-2 py-0.5 outline-none"
+              style={{
+                border: '1.5px solid var(--accent)',
+                background: 'var(--surface)',
+                color: 'var(--text-primary)',
+              }}
               autoFocus
             />
           ) : (
-            <span className="text-sm font-medium truncate">
-              {group.name}
-            </span>
+            <>
+              <div
+                className={`text-[14px] truncate ${
+                  group.isAutoSave
+                    ? 'font-medium'
+                    : 'font-semibold'
+                }`}
+                style={{
+                  color: group.isAutoSave ? 'var(--text-secondary)' : 'var(--text-primary)',
+                }}
+              >
+                {group.name}
+              </div>
+              <div
+                className="text-[11px] mt-[2px]"
+                style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}
+              >
+                {group.tabs.length} {group.tabs.length === 1 ? 'tab' : 'tabs'} · {formattedDate}
+              </div>
+            </>
           )}
-
-          {group.isAutoSave && (
-            <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
-              [auto]
-            </span>
-          )}
-        </button>
-
-        {/* Tab count */}
-        <span className="text-xs text-gray-400 shrink-0">
-          {group.tabs.length} {group.tabs.length === 1 ? 'tab' : 'tabs'}
-        </span>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          className="text-xs text-blue-600 hover:text-blue-800"
-          onClick={() => onOpenGroup(group.id)}
-        >
-          Restore all
-        </button>
-        <button
-          className="text-xs text-gray-500 hover:text-gray-700"
-          onClick={() => {
-            setEditName(group.name);
-            setIsEditing(true);
-          }}
-        >
-          Rename
-        </button>
-        <button
-          className="text-xs text-red-400 hover:text-red-600"
-          onClick={() => onDeleteGroup(group.id)}
-        >
-          Delete
-        </button>
-      </div>
-
-      {/* Expanded tab list */}
-      {isExpanded && group.tabs.length > 0 && (
-        <div className="mt-2 border-t border-gray-100 pt-2">
-          {group.tabs.map((tab) => (
-            <TabItem
-              key={tab.id}
-              tab={tab}
-              onOpen={onOpenTab}
-              onDelete={(tabId) => onDeleteTab(group.id, tabId)}
-            />
-          ))}
         </div>
+
+        {/* Auto badge */}
+        {group.isAutoSave && (
+          <span
+            className="text-[10px] font-semibold shrink-0 rounded-full"
+            style={{
+              background: 'var(--surface-3)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              padding: '2px 7px',
+              letterSpacing: '0.3px',
+            }}
+          >
+            AUTO
+          </span>
+        )}
+
+        {/* Action buttons — visible on card hover */}
+        <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+          {!group.isAutoSave && (
+            <>
+              <ActionBtn
+                title="Restore all"
+                onClick={(e) => { e.stopPropagation(); onOpenGroup(group.id); }}
+              >
+                ↩
+              </ActionBtn>
+              <ActionBtn
+                title="Rename"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditName(group.name);
+                  setIsEditing(true);
+                }}
+              >
+                ✏
+              </ActionBtn>
+            </>
+          )}
+          <button
+            className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
+            style={{
+              color: 'var(--red)',
+              border: '1px solid var(--red-border)',
+              background: 'var(--red-soft)',
+              transition: 'all 0.12s ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--red-border)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--red-soft)'; }}
+            onClick={(e) => { e.stopPropagation(); onDeleteGroup(group.id); }}
+            title="Delete group"
+          >
+            🗑
+          </button>
+        </div>
+      </div>
+
+      {/* Tab list */}
+      {isExpanded && group.tabs.length > 0 && (
+        <>
+          <div
+            style={{
+              borderTop: '1px solid var(--border)',
+              maxHeight: `${TAB_LIST_MAX_HEIGHT_PX}px`,
+              overflowY: 'auto',
+            }}
+          >
+            {group.tabs.slice(0, visibleCount).map((tab) => (
+              <TabItem
+                key={tab.id}
+                tab={tab}
+                onOpen={onOpenTab}
+                onDelete={(tabId) => onDeleteTab(group.id, tabId)}
+              />
+            ))}
+          </div>
+          {visibleCount < group.tabs.length && (
+            <button
+              className="w-full text-[12px] font-medium cursor-pointer"
+              style={{
+                padding: '10px 16px',
+                color: 'var(--accent)',
+                background: 'var(--surface-2)',
+                border: 'none',
+                borderTop: '1px solid var(--border)',
+                fontFamily: "'DM Sans', sans-serif",
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onClick={() => setVisibleCount((c) => c + TAB_GROUP_LOAD_MORE_BATCH)}
+            >
+              Show {Math.min(TAB_GROUP_LOAD_MORE_BATCH, group.tabs.length - visibleCount)} more of {group.tabs.length - visibleCount} remaining
+            </button>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function ActionBtn({
+  children,
+  title,
+  onClick,
+}: {
+  children: React.ReactNode;
+  title: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
+      style={{
+        border: '1px solid var(--border)',
+        background: 'var(--surface)',
+        color: 'var(--text-secondary)',
+        transition: 'all 0.12s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--surface-3)';
+        e.currentTarget.style.borderColor = 'var(--border-strong)';
+        e.currentTarget.style.color = 'var(--text-primary)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'var(--surface)';
+        e.currentTarget.style.borderColor = 'var(--border)';
+        e.currentTarget.style.color = 'var(--text-secondary)';
+      }}
+      onClick={onClick}
+      title={title}
+    >
+      {children}
+    </button>
   );
 }

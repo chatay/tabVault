@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageService } from '@/lib/storage';
-import type { TabGroup, SavedTab } from '@/lib/types';
+import type { TabGroup, SavedTab, SaveResult } from '@/lib/types';
+
+/** Unwrap a successful SaveResult or fail the test. */
+function expectSuccess(result: SaveResult) {
+  expect(result.success).toBe(true);
+  if (!result.success) throw new Error('Expected successful save');
+  return result.group;
+}
 
 // Mock chrome.tabs API
 const mockChromeTabs = {
@@ -88,7 +95,7 @@ describe('TabService', () => {
         { id: 2, url: 'https://google.com', title: 'Google', favIconUrl: null } as chrome.tabs.Tab,
       ]);
 
-      const group = await service.saveCurrentTabs();
+      const group = expectSuccess(await service.saveCurrentTabs());
 
       // Verify chrome.tabs.query was called for current window
       expect(mockChromeTabs.query).toHaveBeenCalledWith({ currentWindow: true });
@@ -136,7 +143,7 @@ describe('TabService', () => {
         { id: 9, url: 'https://also-valid.com', title: 'Also Valid' } as chrome.tabs.Tab,
       ]);
 
-      const group = await service.saveCurrentTabs();
+      const group = expectSuccess(await service.saveCurrentTabs());
 
       expect(group.tabs).toHaveLength(2);
       expect(group.tabs[0].url).toBe('https://valid.com');
@@ -154,7 +161,7 @@ describe('TabService', () => {
         { id: 1, url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
       ]);
 
-      const group = await service.saveCurrentTabs({ isAutoSave: true });
+      const group = expectSuccess(await service.saveCurrentTabs({ isAutoSave: true }));
 
       expect(group.isAutoSave).toBe(true);
       expect(group.name).toContain('Auto-save');
@@ -162,6 +169,52 @@ describe('TabService', () => {
 
       // Auto-save should NOT close tabs
       expect(mockChromeTabs.remove).not.toHaveBeenCalled();
+    });
+
+    it('with closeAfterSave: false does NOT close tabs or open TabVault page', async () => {
+      const storage = makeStorage();
+      const service = new TabService(storage, 'device-1');
+
+      mockChromeTabs.query.mockResolvedValue([
+        { id: 1, url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
+      ]);
+
+      const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
+
+      expect(group.isAutoSave).toBe(false);
+      // Tabs should NOT be closed
+      expect(mockChromeTabs.remove).not.toHaveBeenCalled();
+      // TabVault page should NOT be opened
+      expect(mockChromeTabs.create).not.toHaveBeenCalled();
+    });
+
+    it('with groupNameFormat "datetime-only" omits the prefix', async () => {
+      const storage = makeStorage();
+      const service = new TabService(storage, 'device-1');
+
+      mockChromeTabs.query.mockResolvedValue([
+        { id: 1, url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
+      ]);
+
+      const group = expectSuccess(await service.saveCurrentTabs({ groupNameFormat: 'datetime-only' }));
+
+      expect(group.name).not.toContain('Session');
+      expect(group.name).not.toContain('Auto-save');
+      // Should just be a timestamp like "Jan 1, 3:30 PM"
+      expect(group.name).toMatch(/\w+ \d+, \d+:\d+ [AP]M/);
+    });
+
+    it('with groupNameFormat "session-datetime" includes the prefix', async () => {
+      const storage = makeStorage();
+      const service = new TabService(storage, 'device-1');
+
+      mockChromeTabs.query.mockResolvedValue([
+        { id: 1, url: 'https://example.com', title: 'Example' } as chrome.tabs.Tab,
+      ]);
+
+      const group = expectSuccess(await service.saveCurrentTabs({ groupNameFormat: 'session-datetime' }));
+
+      expect(group.name).toContain('Session');
     });
   });
 

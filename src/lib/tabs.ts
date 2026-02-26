@@ -1,5 +1,10 @@
-import type { SavedTab, TabGroup } from './types';
+import type { SavedTab, TabGroup, SaveResult } from './types';
 import type { StorageService } from './storage';
+import { getSession, getProfile } from './auth';
+import { getSupabase } from './supabase';
+import { SyncEngine } from './sync';
+import { SyncQueue } from './sync-queue';
+import { CLOUD_FREE_TAB_LIMIT, SubscriptionTier } from './constants';
 
 const FILTERED_PROTOCOLS = ['chrome:', 'edge:', 'brave:', 'opera:', 'about:', 'chrome-extension:'];
 
@@ -19,6 +24,8 @@ function formatTimestamp(date: Date): string {
 
 interface SaveOptions {
   isAutoSave?: boolean;
+  closeAfterSave?: boolean;
+  groupNameFormat?: 'session-datetime' | 'datetime-only';
 }
 
 export class TabService {
@@ -27,15 +34,37 @@ export class TabService {
     private deviceId: string,
   ) {}
 
-  async saveCurrentTabs(options: SaveOptions = {}): Promise<TabGroup> {
-    const { isAutoSave = false } = options;
+  async saveCurrentTabs(options: SaveOptions = {}): Promise<SaveResult> {
+    const { isAutoSave = false, closeAfterSave = true, groupNameFormat = 'session-datetime' } = options;
     const chromeTabs = await chrome.tabs.query({ currentWindow: true });
+
+    const saveable = chromeTabs.filter((tab) => isValidTabUrl(tab.url));
+
+    // Check limit BEFORE saving anywhere (manual saves only).
+    // Auto-saves are a local safety net and always proceed.
+    if (!isAutoSave) {
+      try {
+        const session = await getSession();
+        if (session) {
+          const profile = await getProfile();
+          if (profile?.tier === SubscriptionTier.CLOUD_FREE) {
+            const remaining = CLOUD_FREE_TAB_LIMIT - profile.tabCount;
+            if (saveable.length > remaining) {
+              return {
+                success: false,
+                limitExceeded: { trying: saveable.length, remaining: Math.max(0, remaining) },
+              };
+            }
+          }
+        }
+      } catch {
+        // No Supabase config or not authenticated — no limit applies
+      }
+    }
 
     const now = Date.now();
     const timestamp = formatTimestamp(new Date(now));
     const prefix = isAutoSave ? 'Auto-save' : 'Session';
-
-    const saveable = chromeTabs.filter((tab) => isValidTabUrl(tab.url));
 
     const tabs: SavedTab[] = saveable.map((tab, index) => ({
       id: crypto.randomUUID(),
@@ -46,9 +75,11 @@ export class TabService {
       createdAt: now,
     }));
 
+    const name = groupNameFormat === 'datetime-only' ? timestamp : `${prefix} - ${timestamp}`;
+
     const group: TabGroup = {
       id: crypto.randomUUID(),
-      name: `${prefix} - ${timestamp}`,
+      name,
       tabs,
       isAutoSave,
       deviceId: this.deviceId,
@@ -58,8 +89,19 @@ export class TabService {
 
     await this.storage.saveTabGroup(group);
 
-    // Close saved tabs (manual saves only — auto-save should not disrupt the user)
-    if (!isAutoSave && saveable.length > 0) {
+    // Push to cloud if authenticated
+    try {
+      const session = await getSession();
+      if (session) {
+        const engine = new SyncEngine(this.storage, new SyncQueue());
+        await engine.pushGroup(group).catch(() => {});
+      }
+    } catch {
+      // No Supabase config or not authenticated — skip cloud sync
+    }
+
+    // Close saved tabs (manual saves only, and only when user hasn't disabled it)
+    if (!isAutoSave && closeAfterSave && saveable.length > 0) {
       const tabIdsToClose = saveable
         .map((t) => t.id)
         .filter((id): id is number => id !== undefined);
@@ -72,7 +114,7 @@ export class TabService {
       }
     }
 
-    return group;
+    return { success: true, group };
   }
 
   async renameGroup(groupId: string, newName: string): Promise<void> {
@@ -98,6 +140,42 @@ export class TabService {
     group.tabs = group.tabs.filter((t) => t.id !== tabId);
     group.updatedAt = Date.now();
     await this.storage.saveTabGroup(group);
+
+    const session = await getSession().catch(() => null);
+    if (session) {
+      const supabase = getSupabase();
+      await supabase.from('tabs').delete().eq('id', tabId);
+      await supabase.rpc('recalculate_tab_count', { p_user_id: session.user.id });
+    }
+  }
+
+  async deleteGroup(groupId: string): Promise<void> {
+    await this.storage.deleteTabGroup(groupId);
+
+    const session = await getSession().catch(() => null);
+    if (session) {
+      const supabase = getSupabase();
+      // Delete tabs first so the AFTER DELETE trigger can still resolve user_id
+      // via tab_groups (CASCADE would delete tabs after the group row is gone)
+      await supabase.from('tabs').delete().eq('group_id', groupId);
+      await supabase.from('tab_groups').delete().eq('id', groupId);
+      await supabase.rpc('recalculate_tab_count', { p_user_id: session.user.id });
+    }
+  }
+
+  async deleteGroups(groupIds: string[]): Promise<void> {
+    await this.storage.deleteTabGroups(groupIds);
+
+    const session = await getSession().catch(() => null);
+    if (session) {
+      const supabase = getSupabase();
+      for (const id of groupIds) {
+        // Delete tabs first — same CASCADE timing fix as deleteGroup
+        await supabase.from('tabs').delete().eq('group_id', id);
+        await supabase.from('tab_groups').delete().eq('id', id);
+      }
+      await supabase.rpc('recalculate_tab_count', { p_user_id: session.user.id });
+    }
   }
 
   async moveTab(tabId: string, fromGroupId: string, toGroupId: string): Promise<void> {
@@ -120,6 +198,21 @@ export class TabService {
     await this.storage.saveTabGroup(toGroup);
   }
 
+  async syncAllToCloud(): Promise<void> {
+    const session = await getSession();
+    if (!session) return;
+
+    const groups = await this.storage.getTabGroups();
+    const engine = new SyncEngine(this.storage, new SyncQueue());
+
+    // Register device once before pushing all groups
+    await engine.ensureDevice();
+
+    for (const group of groups) {
+      await engine.pushGroup(group);
+    }
+  }
+
   async openTab(url: string): Promise<void> {
     await chrome.tabs.create({ url });
   }
@@ -134,7 +227,7 @@ export class TabService {
     }
 
     if (removeAfterRestore) {
-      await this.storage.deleteTabGroup(groupId);
+      await this.deleteGroup(groupId);
     }
   }
 }

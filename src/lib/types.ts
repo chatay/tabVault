@@ -24,6 +24,10 @@ export interface UserSettings {
   restoreBehavior: 'keep' | 'remove';
   hasSeenCloudPrompt: boolean;
   hasDismissedCloudPrompt: boolean;
+  closeTabsAfterSaving: boolean;
+  autoSaveIntervalMinutes: 5 | 10 | 15;
+  groupNameFormat: 'session-datetime' | 'datetime-only';
+  darkMode: boolean;
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -31,6 +35,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
   restoreBehavior: 'keep',
   hasSeenCloudPrompt: false,
   hasDismissedCloudPrompt: false,
+  closeTabsAfterSaving: true,
+  autoSaveIntervalMinutes: 5,
+  groupNameFormat: 'session-datetime',
+  darkMode: false,
 };
 
 export interface UserProfile {
@@ -51,3 +59,7 @@ export interface SyncQueueItem {
 }
 
 export type SyncStatus = 'synced' | 'syncing' | 'pending' | 'failed';
+
+export type SaveResult =
+  | { success: true; group: TabGroup }
+  | { success: false; limitExceeded: { trying: number; remaining: number } };

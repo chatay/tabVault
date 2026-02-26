@@ -7,6 +7,7 @@ import {
   AUTO_SAVE_INTERVAL_MINUTES,
   SYNC_RETRY_INTERVAL_MINUTES,
   STORAGE_KEY_LAST_AUTO_SAVE_HASH,
+  STORAGE_KEY_SETTINGS,
 } from '../lib/constants';
 
 export default defineBackground(() => {
@@ -20,6 +21,18 @@ export default defineBackground(() => {
   chrome.runtime.onStartup.addListener(async () => {
     await ensureAlarm(ALARM_AUTO_SAVE, AUTO_SAVE_INTERVAL_MINUTES);
     await ensureAlarm(ALARM_SYNC_RETRY, SYNC_RETRY_INTERVAL_MINUTES);
+  });
+
+  // --- Re-create auto-save alarm when settings change ---
+  chrome.storage.onChanged.addListener(async (changes) => {
+    if (changes[STORAGE_KEY_SETTINGS]) {
+      const newSettings = changes[STORAGE_KEY_SETTINGS].newValue;
+      if (newSettings?.autoSaveIntervalMinutes) {
+        await chrome.alarms.create(ALARM_AUTO_SAVE, {
+          periodInMinutes: newSettings.autoSaveIntervalMinutes,
+        });
+      }
+    }
   });
 
   // --- Alarm handlers (top level!) ---
@@ -78,7 +91,7 @@ export async function handleAutoSave(): Promise<void> {
 
   const deviceId = await getOrCreateDeviceId();
   const tabService = new TabService(storageService, deviceId);
-  await tabService.saveCurrentTabs({ isAutoSave: true });
+  await tabService.saveCurrentTabs({ isAutoSave: true, groupNameFormat: settings.groupNameFormat });
 
   await chrome.storage.local.set({ [STORAGE_KEY_LAST_AUTO_SAVE_HASH]: currentHash });
 }
@@ -95,12 +108,15 @@ export async function updateBadge(engine?: { getSyncStatus(): Promise<import('..
     case 'failed':
       await chrome.action.setBadgeText({ text: '!' });
       await chrome.action.setBadgeBackgroundColor({ color: '#EF4444' });
+      await chrome.action.setTitle({ title: 'TabVault — Sync failed. Click to retry.' });
       break;
     case 'pending':
       await chrome.action.setBadgeText({ text: '...' });
       await chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
+      await chrome.action.setTitle({ title: 'TabVault — Syncing your tabs to the cloud...' });
       break;
     default:
       await chrome.action.setBadgeText({ text: '' });
+      await chrome.action.setTitle({ title: 'TabVault' });
   }
 }

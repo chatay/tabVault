@@ -1,6 +1,7 @@
 interface FaviconImgProps {
   url: string;
   faviconUrl: string | null;
+  size?: number;
 }
 
 function getFallbackSrc(url: string): string {
@@ -12,15 +13,15 @@ function getFallbackSrc(url: string): string {
   }
 }
 
-export function FaviconImg({ url, faviconUrl }: FaviconImgProps) {
+export function FaviconImg({ url, faviconUrl, size = 16 }: FaviconImgProps) {
   const fallbackSrc = getFallbackSrc(url);
 
   return (
     <img
       src={faviconUrl || fallbackSrc}
       alt=""
-      width={16}
-      height={16}
+      width={size}
+      height={size}
       className="shrink-0"
       onError={(e) => {
         (e.target as HTMLImageElement).src = fallbackSrc;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_SETTINGS } from '@/lib/types';
-import type { SavedTab, TabGroup, UserSettings, UserProfile, SyncQueueItem, SyncStatus } from '@/lib/types';
+import type { SavedTab, TabGroup, UserSettings, UserProfile, SyncQueueItem, SyncStatus, SaveResult } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/constants';
 
 describe('types', () => {
@@ -21,8 +21,24 @@ describe('types', () => {
       expect(DEFAULT_SETTINGS.hasDismissedCloudPrompt).toBe(false);
     });
 
-    it('should have exactly 4 keys', () => {
-      expect(Object.keys(DEFAULT_SETTINGS)).toHaveLength(4);
+    it('should have closeTabsAfterSaving as true', () => {
+      expect(DEFAULT_SETTINGS.closeTabsAfterSaving).toBe(true);
+    });
+
+    it('should have autoSaveIntervalMinutes as 5', () => {
+      expect(DEFAULT_SETTINGS.autoSaveIntervalMinutes).toBe(5);
+    });
+
+    it('should have groupNameFormat as "session-datetime"', () => {
+      expect(DEFAULT_SETTINGS.groupNameFormat).toBe('session-datetime');
+    });
+
+    it('should have exactly 8 keys', () => {
+      expect(Object.keys(DEFAULT_SETTINGS)).toHaveLength(8);
+    });
+
+    it('should have darkMode as false', () => {
+      expect(DEFAULT_SETTINGS.darkMode).toBe(false);
     });
   });
 
@@ -76,8 +92,14 @@ describe('types', () => {
         restoreBehavior: 'remove',
         hasSeenCloudPrompt: true,
         hasDismissedCloudPrompt: false,
+        closeTabsAfterSaving: false,
+        autoSaveIntervalMinutes: 10,
+        groupNameFormat: 'datetime-only',
       };
       expect(settings.restoreBehavior).toBe('remove');
+      expect(settings.closeTabsAfterSaving).toBe(false);
+      expect(settings.autoSaveIntervalMinutes).toBe(10);
+      expect(settings.groupNameFormat).toBe('datetime-only');
     });
   });
 
@@ -118,6 +140,39 @@ describe('types', () => {
       expect(statuses).toContain('syncing');
       expect(statuses).toContain('pending');
       expect(statuses).toContain('failed');
+    });
+  });
+
+  describe('SaveResult type', () => {
+    it('should represent a successful save', () => {
+      const result: SaveResult = {
+        success: true,
+        group: {
+          id: 'g1',
+          name: 'Test',
+          tabs: [],
+          isAutoSave: false,
+          deviceId: 'd1',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      };
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.group.id).toBe('g1');
+      }
+    });
+
+    it('should represent a limit exceeded failure', () => {
+      const result: SaveResult = {
+        success: false,
+        limitExceeded: { trying: 22, remaining: 6 },
+      };
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.limitExceeded.trying).toBe(22);
+        expect(result.limitExceeded.remaining).toBe(6);
+      }
     });
   });
 });

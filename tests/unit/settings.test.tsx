@@ -1,38 +1,37 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-// Hoist mock functions so they are available when vi.mock factories run
-const { mockGetSettings, mockUpdateSettings, mockSignOut, mockGetProfile } = vi.hoisted(() => ({
-  mockGetSettings: vi.fn(),
-  mockUpdateSettings: vi.fn(),
-  mockSignOut: vi.fn(),
-  mockGetProfile: vi.fn(),
+// Mock auth and billing modules
+vi.mock('@/lib/auth', () => ({
+  sendOtp: vi.fn(),
+  verifyOtp: vi.fn(),
+  signOut: vi.fn(),
+  getSession: vi.fn(),
+  getProfile: vi.fn(),
 }));
 
-// Mock storage module
-vi.mock('@/lib/storage', () => ({
-  StorageService: class {
-    getSettings = mockGetSettings;
-    updateSettings = mockUpdateSettings;
+vi.mock('@/lib/billing', () => ({
+  getCheckoutUrl: vi.fn(() => 'https://checkout.example.com'),
+}));
+
+vi.mock('@/lib/sync', () => ({
+  SyncEngine: class {
+    getSyncStatus = vi.fn(async () => 'synced' as const);
   },
 }));
 
-// Mock auth module
-vi.mock('@/lib/auth', () => ({
-  signOut: mockSignOut,
-  getProfile: mockGetProfile,
+vi.mock('@/lib/sync-queue', () => ({
+  SyncQueue: class {},
 }));
 
-import App from '@/entrypoints/settings/App';
+import { SettingsPanel } from '@/components/SettingsPanel';
 import type { UserSettings, UserProfile } from '@/lib/types';
+import { DEFAULT_SETTINGS } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/constants';
 
-const DEFAULT_SETTINGS: UserSettings = {
-  autoSaveEnabled: false,
-  restoreBehavior: 'keep',
-  hasSeenCloudPrompt: false,
-  hasDismissedCloudPrompt: false,
+const FULL_SETTINGS: UserSettings = {
+  ...DEFAULT_SETTINGS,
 };
 
 const MOCK_PROFILE: UserProfile = {
@@ -45,132 +44,187 @@ const MOCK_PROFILE: UserProfile = {
 beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
-  mockGetSettings.mockResolvedValue(DEFAULT_SETTINGS);
-  mockGetProfile.mockResolvedValue(null);
-  mockUpdateSettings.mockResolvedValue(undefined);
-  mockSignOut.mockResolvedValue(undefined);
 });
 
-describe('Settings App', () => {
-  it('renders loading state initially', () => {
-    // Never-resolving promise to keep in loading state
-    mockGetSettings.mockReturnValue(new Promise(() => {}));
-    render(<App />);
-    expect(screen.getByText('Loading...')).toBeTruthy();
+function renderPanel(overrides: {
+  settings?: Partial<UserSettings>;
+  profile?: UserProfile | null;
+  onUpdate?: (partial: Partial<UserSettings>) => void;
+  onBack?: () => void;
+  onSignOut?: () => void;
+  onSignIn?: () => void;
+} = {}) {
+  const props = {
+    settings: { ...FULL_SETTINGS, ...overrides.settings },
+    onUpdate: overrides.onUpdate ?? vi.fn(),
+    onBack: overrides.onBack ?? vi.fn(),
+    profile: overrides.profile ?? null,
+    onSignOut: overrides.onSignOut ?? vi.fn(),
+    onSignIn: overrides.onSignIn ?? vi.fn(),
+  };
+  return { ...render(<SettingsPanel {...props} />), props };
+}
+
+describe('SettingsPanel', () => {
+  it('renders Settings title and back button', () => {
+    renderPanel();
+    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByTitle('Back')).toBeTruthy();
   });
 
-  it('renders auto-save checkbox after settings load', async () => {
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByText('Automatically save tabs every 5 minutes')).toBeTruthy();
+  it('calls onBack when back button is clicked', () => {
+    const onBack = vi.fn();
+    renderPanel({ onBack });
+    fireEvent.click(screen.getByTitle('Back'));
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  describe('Saving section', () => {
+    it('renders close tabs toggle checked by default', () => {
+      renderPanel();
+      expect(screen.getByText('Close tabs after saving')).toBeTruthy();
+      const checkboxes = screen.getAllByRole('checkbox');
+      // First checkbox is closeTabsAfterSaving
+      expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
     });
-    const checkbox = screen.getByRole('checkbox');
-    expect(checkbox).toBeTruthy();
-    expect((checkbox as HTMLInputElement).checked).toBe(false);
-  });
 
-  it('renders auto-save checkbox checked when autoSaveEnabled is true', async () => {
-    mockGetSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, autoSaveEnabled: true });
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox')).toBeTruthy();
+    it('calls onUpdate when close tabs toggle is clicked', () => {
+      const onUpdate = vi.fn();
+      renderPanel({ onUpdate });
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[0]);
+      expect(onUpdate).toHaveBeenCalledWith({ closeTabsAfterSaving: false });
     });
-    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
   });
 
-  it('toggles auto-save and calls updateSettings', async () => {
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox')).toBeTruthy();
+  describe('Restoring section', () => {
+    it('renders radio buttons with "keep" selected by default', () => {
+      renderPanel();
+      expect(screen.getByText('Keep saved group after restoring')).toBeTruthy();
+      expect(screen.getByText('Remove group after restoring')).toBeTruthy();
+      const radios = screen.getAllByRole('radio');
+      expect((radios[0] as HTMLInputElement).checked).toBe(true);
+      expect((radios[1] as HTMLInputElement).checked).toBe(false);
     });
-    const checkbox = screen.getByRole('checkbox');
-    fireEvent.click(checkbox);
-    expect(mockUpdateSettings).toHaveBeenCalledWith({ autoSaveEnabled: true });
-  });
 
-  it('renders restore behavior dropdown', async () => {
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeTruthy();
+    it('calls onUpdate when restore behavior changes', () => {
+      const onUpdate = vi.fn();
+      renderPanel({ onUpdate });
+      const radios = screen.getAllByRole('radio');
+      fireEvent.click(radios[1]);
+      expect(onUpdate).toHaveBeenCalledWith({ restoreBehavior: 'remove' });
     });
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('keep');
-    expect(screen.getByText('Keep tabs after restoring')).toBeTruthy();
-    expect(screen.getByText('Remove tabs after restoring')).toBeTruthy();
   });
 
-  it('changes restore behavior and calls updateSettings', async () => {
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeTruthy();
+  describe('Auto-save section', () => {
+    it('renders auto-save toggle unchecked by default', () => {
+      renderPanel();
+      expect(screen.getByText('Auto-save open tabs')).toBeTruthy();
+      const checkboxes = screen.getAllByRole('checkbox');
+      // Second checkbox is autoSaveEnabled
+      expect((checkboxes[1] as HTMLInputElement).checked).toBe(false);
     });
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: 'remove' } });
-    expect(mockUpdateSettings).toHaveBeenCalledWith({ restoreBehavior: 'remove' });
+
+    it('calls onUpdate when auto-save toggle is clicked', () => {
+      const onUpdate = vi.fn();
+      renderPanel({ onUpdate });
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[1]);
+      expect(onUpdate).toHaveBeenCalledWith({ autoSaveEnabled: true });
+    });
+
+    it('renders interval dropdown disabled when auto-save is off', () => {
+      renderPanel();
+      const selects = screen.getAllByRole('combobox');
+      // First combobox is interval dropdown
+      expect((selects[0] as HTMLSelectElement).disabled).toBe(true);
+    });
+
+    it('renders interval dropdown enabled when auto-save is on', () => {
+      renderPanel({ settings: { autoSaveEnabled: true } });
+      const selects = screen.getAllByRole('combobox');
+      expect((selects[0] as HTMLSelectElement).disabled).toBe(false);
+    });
+
+    it('calls onUpdate when interval changes', () => {
+      const onUpdate = vi.fn();
+      renderPanel({ settings: { autoSaveEnabled: true }, onUpdate });
+      const selects = screen.getAllByRole('combobox');
+      fireEvent.change(selects[0], { target: { value: '10' } });
+      expect(onUpdate).toHaveBeenCalledWith({ autoSaveIntervalMinutes: 10 });
+    });
   });
 
-  it('shows account section when profile exists', async () => {
-    mockGetProfile.mockResolvedValue(MOCK_PROFILE);
-    render(<App />);
-    await waitFor(() => {
+  describe('Group Names section', () => {
+    it('renders format dropdown with session-datetime selected', () => {
+      renderPanel();
+      const selects = screen.getAllByRole('combobox');
+      // Second combobox is group name format
+      expect((selects[1] as HTMLSelectElement).value).toBe('session-datetime');
+    });
+
+    it('calls onUpdate when format changes', () => {
+      const onUpdate = vi.fn();
+      renderPanel({ onUpdate });
+      const selects = screen.getAllByRole('combobox');
+      fireEvent.change(selects[1], { target: { value: 'datetime-only' } });
+      expect(onUpdate).toHaveBeenCalledWith({ groupNameFormat: 'datetime-only' });
+    });
+  });
+
+  describe('Account section — logged out', () => {
+    it('shows cloud backup invitation when not logged in', () => {
+      renderPanel({ profile: null });
+      expect(screen.getByText('Back up your tabs to the cloud')).toBeTruthy();
+      expect(screen.getByText(/Add your email to protect them/)).toBeTruthy();
+      expect(screen.getByPlaceholderText('your@email.com')).toBeTruthy();
+      expect(screen.getByText('Protect my tabs')).toBeTruthy();
+    });
+  });
+
+  describe('Account section — logged in', () => {
+    it('shows email and plan when logged in', () => {
+      renderPanel({ profile: MOCK_PROFILE });
       expect(screen.getByText('test@example.com')).toBeTruthy();
+      expect(screen.getByText(/Free plan/)).toBeTruthy();
     });
-    expect(screen.getByText('Free')).toBeTruthy();
-    expect(screen.getByText(/42/)).toBeTruthy();
-    expect(screen.getByText(/75/)).toBeTruthy();
-    expect(screen.getByText('Sign out')).toBeTruthy();
-  });
 
-  it('shows Pro plan label for paid tier', async () => {
-    mockGetProfile.mockResolvedValue({
-      ...MOCK_PROFILE,
-      tier: SubscriptionTier.CLOUD_PAID,
+    it('shows upgrade button for free tier', () => {
+      renderPanel({ profile: MOCK_PROFILE });
+      expect(screen.getByText(/Upgrade to Pro/)).toBeTruthy();
     });
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByText('Pro')).toBeTruthy();
-    });
-  });
 
-  it('hides account section when no profile', async () => {
-    mockGetProfile.mockResolvedValue(null);
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByText('TabVault Settings')).toBeTruthy();
+    it('hides upgrade button for paid tier', () => {
+      renderPanel({
+        profile: { ...MOCK_PROFILE, tier: SubscriptionTier.CLOUD_PAID },
+      });
+      expect(screen.queryByText(/Upgrade to Pro/)).toBeNull();
+      expect(screen.getByText(/Pro plan/)).toBeTruthy();
     });
-    expect(screen.queryByText('Sign out')).toBeNull();
-    expect(screen.queryByText('Account')).toBeNull();
-  });
 
-  it('sign out button calls signOut and clears profile', async () => {
-    mockGetProfile.mockResolvedValue(MOCK_PROFILE);
-    render(<App />);
-    await waitFor(() => {
+    it('shows sign out confirmation on click', () => {
+      renderPanel({ profile: MOCK_PROFILE });
+      fireEvent.click(screen.getByText('Sign out'));
+      expect(screen.getByText(/Your local tabs will remain safe/)).toBeTruthy();
+      expect(screen.getByText('Confirm')).toBeTruthy();
+      expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    it('calls onSignOut when confirmed', () => {
+      const onSignOut = vi.fn();
+      renderPanel({ profile: MOCK_PROFILE, onSignOut });
+      fireEvent.click(screen.getByText('Sign out'));
+      fireEvent.click(screen.getByText('Confirm'));
+      expect(onSignOut).toHaveBeenCalledOnce();
+    });
+
+    it('cancels sign out and returns to normal view', () => {
+      renderPanel({ profile: MOCK_PROFILE });
+      fireEvent.click(screen.getByText('Sign out'));
+      fireEvent.click(screen.getByText('Cancel'));
+      // Should be back to showing "Sign out" link
       expect(screen.getByText('Sign out')).toBeTruthy();
+      expect(screen.queryByText('Confirm')).toBeNull();
     });
-    const signOutButton = screen.getByText('Sign out');
-    fireEvent.click(signOutButton);
-    await waitFor(() => {
-      expect(mockSignOut).toHaveBeenCalledOnce();
-    });
-    // After sign out, account section should disappear
-    await waitFor(() => {
-      expect(screen.queryByText('test@example.com')).toBeNull();
-    });
-  });
-
-  it('does not show tab count for unlimited (paid) tier', async () => {
-    mockGetProfile.mockResolvedValue({
-      ...MOCK_PROFILE,
-      tier: SubscriptionTier.CLOUD_PAID,
-      tabCount: 200,
-    });
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByText('Pro')).toBeTruthy();
-    });
-    // Infinity limit means no "Tabs: X / Y" display
-    expect(screen.queryByText(/200 \//)).toBeNull();
   });
 });

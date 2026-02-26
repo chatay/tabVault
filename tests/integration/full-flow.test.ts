@@ -3,7 +3,14 @@ import { StorageService } from '@/lib/storage';
 import { TabService } from '@/lib/tabs';
 import { SyncQueue } from '@/lib/sync-queue';
 import { DEFAULT_SETTINGS } from '@/lib/types';
-import type { UserSettings } from '@/lib/types';
+import type { UserSettings, SaveResult } from '@/lib/types';
+
+/** Unwrap a successful SaveResult or fail the test. */
+function expectSuccess(result: SaveResult) {
+  expect(result.success).toBe(true);
+  if (!result.success) throw new Error('Expected successful save');
+  return result.group;
+}
 import {
   STORAGE_KEY_SETTINGS,
   STORAGE_KEY_LAST_AUTO_SAVE_HASH,
@@ -23,6 +30,7 @@ const mockChromeTabs = {
 const mockChromeAction = {
   setBadgeText: vi.fn(async () => {}),
   setBadgeBackgroundColor: vi.fn(async () => {}),
+  setTitle: vi.fn(async () => {}),
 };
 
 const mockChromeRuntime = {
@@ -98,7 +106,7 @@ describe('Integration: save-and-retrieve flow', () => {
       { url: 'https://docs.vitest.dev', title: 'Vitest Docs', favIconUrl: null } as chrome.tabs.Tab,
     ]);
 
-    const savedGroup = await tabService.saveCurrentTabs();
+    const savedGroup = expectSuccess(await tabService.saveCurrentTabs());
 
     // Retrieve from storage independently
     const groups = await storage.getTabGroups();
@@ -123,12 +131,12 @@ describe('Integration: save-and-retrieve flow', () => {
     mockChromeTabs.query.mockResolvedValue([
       { url: 'https://first.com', title: 'First' } as chrome.tabs.Tab,
     ]);
-    const first = await tabService.saveCurrentTabs();
+    const first = expectSuccess(await tabService.saveCurrentTabs());
 
     mockChromeTabs.query.mockResolvedValue([
       { url: 'https://second.com', title: 'Second' } as chrome.tabs.Tab,
     ]);
-    const second = await tabService.saveCurrentTabs();
+    const second = expectSuccess(await tabService.saveCurrentTabs());
 
     const groups = await storage.getTabGroups();
     expect(groups).toHaveLength(2);

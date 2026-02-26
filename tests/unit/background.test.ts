@@ -75,6 +75,7 @@ beforeEach(() => {
 const mockChromeAction = {
   setBadgeText: vi.fn(async () => {}),
   setBadgeBackgroundColor: vi.fn(async () => {}),
+  setTitle: vi.fn(async () => {}),
 };
 
 beforeEach(() => {
