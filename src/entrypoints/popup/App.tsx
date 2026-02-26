@@ -93,8 +93,14 @@ export default function App() {
         return;
       }
 
-      // Refresh groups from the correct source of truth
+      // Refresh groups and profile from the correct source of truth
       await loadGroups();
+      const p = await getProfile();
+      if (p) setProfile(p);
+
+      // Notify other views (full-page) that save is fully complete
+      // so they can refresh with up-to-date Supabase data
+      chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
 
       // Show auth prompt after first save if not authenticated
       if (!isAuthenticated) {
@@ -137,6 +143,7 @@ export default function App() {
     await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
+    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
   }
 
   // Delete an entire group
@@ -145,6 +152,7 @@ export default function App() {
     await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
+    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
   }
 
   // Rename a group
@@ -174,6 +182,7 @@ export default function App() {
     await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
+    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
   }
 
   // Exit select mode

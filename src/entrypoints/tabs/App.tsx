@@ -66,7 +66,7 @@ export default function App() {
     loadGroups();
   }, [loadGroups]);
 
-  // Listen for storage changes for live updates
+  // Listen for local storage changes (immediate UI feedback)
   useEffect(() => {
     function handleStorageChanged() {
       loadGroups();
@@ -75,6 +75,23 @@ export default function App() {
     chrome.storage.onChanged.addListener(handleStorageChanged);
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChanged);
+    };
+  }, [loadGroups]);
+
+  // Listen for cross-view data-changed messages (sent by popup after
+  // Supabase operations complete, so profile.tabCount is up-to-date)
+  useEffect(() => {
+    async function handleMessage(message: any) {
+      if (message?.type === 'tabvault:data-changed') {
+        await loadGroups();
+        const p = await getProfile();
+        if (p) setProfile(p);
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
     };
   }, [loadGroups]);
 
