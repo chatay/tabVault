@@ -132,6 +132,7 @@ export default function App() {
   // Delete a tab from a group
   async function handleDeleteTab(groupId: string, tabId: string) {
     await tabService?.deleteTab(groupId, tabId);
+    await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
   }
@@ -139,6 +140,7 @@ export default function App() {
   // Delete an entire group
   async function handleDeleteGroup(groupId: string) {
     await tabService?.deleteGroup(groupId);
+    await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
   }
@@ -167,6 +169,7 @@ export default function App() {
     await tabService?.deleteGroups([...selectedIds]);
     setSelectedIds(new Set());
     setIsSelectMode(false);
+    await loadGroups();
     const p = await getProfile();
     if (p) setProfile(p);
   }
