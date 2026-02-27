@@ -1,4 +1,8 @@
-import { SubscriptionTier } from './constants';
+import {
+  SubscriptionTier,
+  CATEGORIZATION_STATUS,
+  ABUSE_CHECK_RESULT,
+} from './constants';
 
 export interface SavedTab {
   id: string;
@@ -9,6 +13,18 @@ export interface SavedTab {
   createdAt: number;
 }
 
+export interface SubGroup {
+  id: string;
+  name: string;
+  tabs: SavedTab[];
+}
+
+export type CategorizationStatus =
+  typeof CATEGORIZATION_STATUS[keyof typeof CATEGORIZATION_STATUS];
+
+export type AbuseCheckResult =
+  typeof ABUSE_CHECK_RESULT[keyof typeof ABUSE_CHECK_RESULT];
+
 export interface TabGroup {
   id: string;
   name: string;
@@ -17,6 +33,12 @@ export interface TabGroup {
   deviceId: string;
   createdAt: number;
   updatedAt: number;
+
+  // AI categorization fields
+  subGroups?: SubGroup[];
+  summary?: string;
+  tags?: string[];
+  categorizationStatus?: CategorizationStatus;
 }
 
 export interface UserSettings {

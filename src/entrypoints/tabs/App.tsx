@@ -1,99 +1,45 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StorageService } from '../../lib/storage';
-import { TabService } from '../../lib/tabs';
-import { SyncEngine } from '../../lib/sync';
-import { SyncQueue } from '../../lib/sync-queue';
-import { getOrCreateDeviceId } from '../../lib/device';
-import { getProfile, getSession, signOut } from '../../lib/auth';
+import { useEffect, useMemo, useState } from 'react';
+import { useTabVault } from '../../hooks/useTabVault';
+import { getProfile, signOut } from '../../lib/auth';
 import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT } from '../../lib/constants';
-import type { TabGroup, UserSettings, UserProfile } from '../../lib/types';
-import { DEFAULT_SETTINGS } from '../../lib/types';
+import type { UserSettings } from '../../lib/types';
 import { TabGroupCard } from '../../components/TabGroupCard';
 import { SearchBar } from '../../components/SearchBar';
 import { SearchResultItem } from '../../components/SearchResultItem';
 import { SettingsPanel } from '../../components/SettingsPanel';
 
 export default function App() {
-  const [groups, setGroups] = useState<TabGroup[]>([]);
-  const [storageService] = useState(() => new StorageService());
-  const [tabService, setTabService] = useState<TabService | null>(null);
+  const {
+    groups,
+    tabService,
+    settings,
+    profile,
+    setProfile,
+    selectedIds,
+    isSelectMode,
+    setIsSelectMode,
+    handleOpenTab,
+    handleOpenGroup,
+    handleDeleteTab,
+    handleDeleteGroup,
+    handleRenameGroup,
+    handleToggleSelect,
+    handleDeleteSelected,
+    handleCancelSelect,
+    updateSettings,
+  } = useTabVault();
+
+  // --- Tabs-specific state ---
   const [searchQuery, setSearchQuery] = useState('');
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSelectMode, setIsSelectMode] = useState(false);
   const [showSettings, setShowSettings] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('settings') === '1';
   });
-  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   // Apply theme on mount and when darkMode changes
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.darkMode ? 'dark' : 'light');
   }, [settings.darkMode]);
-
-  // Initialize TabService with device ID and load profile
-  useEffect(() => {
-    async function init() {
-      const deviceId = await getOrCreateDeviceId();
-      setTabService(new TabService(storageService, deviceId));
-
-      // Load settings
-      const loadedSettings = await storageService.getSettings();
-      setSettings(loadedSettings);
-
-      // Check auth and load profile
-      const loadedProfile = await getProfile();
-      setProfile(loadedProfile);
-    }
-    init();
-  }, [storageService]);
-
-  // Load tab groups from the correct source of truth
-  const loadGroups = useCallback(async () => {
-    const session = await getSession().catch(() => null);
-    if (session) {
-      const engine = new SyncEngine(storageService, new SyncQueue());
-      const cloudGroups = await engine.pullAllGroups();
-      setGroups(cloudGroups);
-    } else {
-      const loaded = await storageService.getTabGroups();
-      setGroups(loaded);
-    }
-  }, [storageService]);
-
-  useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
-
-  // Listen for local storage changes (immediate UI feedback)
-  useEffect(() => {
-    function handleStorageChanged() {
-      loadGroups();
-    }
-
-    chrome.storage.onChanged.addListener(handleStorageChanged);
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChanged);
-    };
-  }, [loadGroups]);
-
-  // Listen for cross-view data-changed messages (sent by popup after
-  // Supabase operations complete, so profile.tabCount is up-to-date)
-  useEffect(() => {
-    async function handleMessage(message: any) {
-      if (message?.type === 'tabvault:data-changed') {
-        await loadGroups();
-        const p = await getProfile();
-        if (p) setProfile(p);
-      }
-    }
-
-    chrome.runtime.onMessage.addListener(handleMessage);
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
-    };
-  }, [loadGroups]);
 
   // Flat search results for search mode
   const searchResults = useMemo(() => {
@@ -124,10 +70,9 @@ export default function App() {
   // Auto-exit selection mode when search is active
   useEffect(() => {
     if (searchQuery.trim().length > 0 && isSelectMode) {
-      setSelectedIds(new Set());
-      setIsSelectMode(false);
+      handleCancelSelect();
     }
-  }, [searchQuery, isSelectMode]);
+  }, [searchQuery, isSelectMode, handleCancelSelect]);
 
   // Split groups into manual and auto-save (used only in non-search view)
   const manualGroups = groups.filter((g) => !g.isAutoSave);
@@ -136,73 +81,7 @@ export default function App() {
   // Total tab count
   const totalTabs = groups.reduce((sum, g) => sum + g.tabs.length, 0);
 
-  // Open a single tab
-  function handleOpenTab(url: string) {
-    tabService?.openTab(url);
-  }
-
-  // Restore all tabs in a group
-  function handleOpenGroup(groupId: string) {
-    tabService?.openGroup(groupId, settings.restoreBehavior === 'remove');
-  }
-
-  // Delete a tab from a group
-  async function handleDeleteTab(groupId: string, tabId: string) {
-    await tabService?.deleteTab(groupId, tabId);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-  }
-
-  // Delete an entire group
-  async function handleDeleteGroup(groupId: string) {
-    await tabService?.deleteGroup(groupId);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-  }
-
-  // Rename a group
-  function handleRenameGroup(groupId: string, newName: string) {
-    tabService?.renameGroup(groupId, newName);
-  }
-
-  // Toggle group selection
-  function handleToggleSelect(groupId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  }
-
-  // Bulk delete selected groups
-  async function handleDeleteSelected() {
-    if (selectedIds.size === 0) return;
-    await tabService?.deleteGroups([...selectedIds]);
-    setSelectedIds(new Set());
-    setIsSelectMode(false);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-  }
-
-  // Exit select mode
-  function handleCancelSelect() {
-    setSelectedIds(new Set());
-    setIsSelectMode(false);
-  }
-
   // Settings handlers
-  async function handleSettingsUpdate(partial: Partial<UserSettings>) {
-    await storageService.updateSettings(partial);
-    setSettings((prev) => ({ ...prev, ...partial }));
-  }
-
   function handleSettingsBack() {
     setShowSettings(false);
     const url = new URL(window.location.href);
@@ -233,7 +112,7 @@ export default function App() {
   // Toggle dark mode
   async function handleToggleDarkMode() {
     const newDarkMode = !settings.darkMode;
-    await handleSettingsUpdate({ darkMode: newDarkMode });
+    await updateSettings({ darkMode: newDarkMode });
   }
 
   const isSearching = searchQuery.trim().length > 0;
@@ -251,7 +130,7 @@ export default function App() {
         {showSettings ? (
           <SettingsPanel
             settings={settings}
-            onUpdate={handleSettingsUpdate}
+            onUpdate={updateSettings}
             onBack={handleSettingsBack}
             profile={profile}
             onSignOut={handleSignOut}
@@ -290,8 +169,8 @@ export default function App() {
                   {groups.length} {groups.length === 1 ? 'group' : 'groups'} · {totalTabs} {totalTabs === 1 ? 'tab' : 'tabs'}
                 </span>
 
-                {/* Local-only badge */}
-                {profile === null && groups.length > 0 && (
+                {/* Status badge */}
+                {profile === null ? (
                   <button
                     className="flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
                     style={{
@@ -299,16 +178,35 @@ export default function App() {
                       border: '1px solid var(--warning-border)',
                       padding: '4px 10px',
                       color: 'var(--warning-text)',
-                      transition: 'all 0.15s ease',
                     }}
                     onClick={() => setShowSettings(true)}
                     title="Your tabs are local only — sign in to protect them"
                   >
                     <span
-                      className="w-[6px] h-[6px] rounded-full"
+                      className="w-[6px] h-[6px] rounded-full shrink-0"
                       style={{ background: 'var(--warning)', animation: 'pulse-dot 2s infinite' }}
                     />
                     Local only
+                  </button>
+                ) : (
+                  <button
+                    className="flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
+                    style={{
+                      background: 'var(--green-soft)',
+                      border: '1px solid var(--green)',
+                      padding: '4px 10px',
+                      color: 'var(--green)',
+                    }}
+                    onClick={() => setShowSettings(true)}
+                    title="Cloud sync active"
+                  >
+                    <span
+                      className="w-[6px] h-[6px] rounded-full shrink-0"
+                      style={{ background: 'var(--green)' }}
+                    />
+                    {profile.tier === SubscriptionTier.CLOUD_FREE
+                      ? `Cloud \u00b7 ${profile.tabCount} of ${CLOUD_FREE_TAB_LIMIT} tabs`
+                      : 'Cloud \u00b7 Pro'}
                   </button>
                 )}
 

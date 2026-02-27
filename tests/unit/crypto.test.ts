@@ -70,6 +70,25 @@ describe('crypto', () => {
       const result = await decrypt('', key);
       expect(result).toBe('');
     });
+
+    it('decrypt throws on corrupted ciphertext (non-printable characters without enc: prefix)', async () => {
+      // Simulate a value that lost its enc: prefix but contains binary data
+      const corrupted = 'some\x00binary\x01data\x03';
+      await expect(decrypt(corrupted, key)).rejects.toThrow('Possibly corrupted ciphertext');
+    });
+
+    it('decrypt does NOT throw on valid legacy plaintext (printable characters)', async () => {
+      // Tab, newline, carriage return are common in valid text and should not trigger
+      const validLegacy = 'Hello World - Tab Title (2024)';
+      const result = await decrypt(validLegacy, key);
+      expect(result).toBe(validLegacy);
+    });
+
+    it('decrypt does NOT throw on legacy URLs with special characters', async () => {
+      const legacyUrl = 'https://example.com/path?q=hello%20world&lang=en#section';
+      const result = await decrypt(legacyUrl, key);
+      expect(result).toBe(legacyUrl);
+    });
   });
 
   describe('encryptNullable / decryptNullable', () => {

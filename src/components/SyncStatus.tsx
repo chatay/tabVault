@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SyncEngine } from '../lib/sync';
 import { SyncQueue } from '../lib/sync-queue';
 import { StorageService } from '../lib/storage';
@@ -14,8 +14,11 @@ const statusConfig: Record<SyncStatusType, { label: string; color: string }> = {
 export function SyncStatusIndicator() {
   const [status, setStatus] = useState<SyncStatusType>('synced');
 
+  // Single stable engine instance per mount — avoids allocating new
+  // StorageService/SyncQueue/SyncEngine on every poll interval tick.
+  const engine = useMemo(() => new SyncEngine(new StorageService(), new SyncQueue()), []);
+
   useEffect(() => {
-    const engine = new SyncEngine(new StorageService(), new SyncQueue());
     engine.getSyncStatus().then(setStatus);
 
     const interval = setInterval(() => {
@@ -23,7 +26,7 @@ export function SyncStatusIndicator() {
     }, 10_000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [engine]);
 
   const config = statusConfig[status];
 

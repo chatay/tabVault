@@ -38,6 +38,33 @@ export const STORAGE_KEY_SYNC_FAIL_COUNT = 'tabvault_sync_fail_count';
 export const STORAGE_KEY_FIRST_SYNC_FAIL_AT = 'tabvault_first_sync_fail_at';
 export const STORAGE_KEY_CRYPTO_KEY_PREFIX = 'tabvault_crypto_key_';
 
+// === AI Categorization ===
+export const CATEGORIZATION_STATUS = {
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  DONE: 'done',
+  FAILED: 'failed',
+} as const;
+
+export const CATEGORIZATION_LIMITS = {
+  MIN_TABS: 5,
+  BATCH_SIZE: 50,
+  MAX_TITLE_LENGTH: 80,
+} as const;
+
+// === Abuse Detection ===
+export const ABUSE_CHECK_RESULT = {
+  NORMAL: 'normal',
+  FLAGGED: 'flagged',
+  BLOCKED: 'blocked',
+} as const;
+
+export const ABUSE_THRESHOLDS = {
+  FLAG_AT: 3,
+  BLOCK_AT: 5,
+  WINDOW_MS: 2 * 60 * 1000,
+} as const;
+
 // === UI ===
 export const POPUP_WIDTH_PX = 400;
 export const POPUP_MIN_HEIGHT_PX = 300;

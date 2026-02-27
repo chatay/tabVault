@@ -245,6 +245,22 @@ describe('AuthPrompt component', () => {
   });
 });
 
+describe('OtpAuthFlow component', () => {
+  it('exports OtpAuthFlow function', async () => {
+    const mod = await import('@/components/OtpAuthFlow');
+    expect(mod.OtpAuthFlow).toBeDefined();
+    expect(typeof mod.OtpAuthFlow).toBe('function');
+  });
+});
+
+describe('useTabVault hook', () => {
+  it('exports useTabVault function', async () => {
+    const mod = await import('@/hooks/useTabVault');
+    expect(mod.useTabVault).toBeDefined();
+    expect(typeof mod.useTabVault).toBe('function');
+  });
+});
+
 describe('Popup logic: auth prompt display', () => {
   /**
    * Replicates the decision logic for showing the auth prompt after save.

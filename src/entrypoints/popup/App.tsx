@@ -1,81 +1,46 @@
-import { useCallback, useEffect, useState } from 'react';
-import { StorageService } from '../../lib/storage';
-import { TabService } from '../../lib/tabs';
-import { SyncEngine } from '../../lib/sync';
-import { SyncQueue } from '../../lib/sync-queue';
-import { getOrCreateDeviceId } from '../../lib/device';
-import { getSession, getProfile } from '../../lib/auth';
+import { useState } from 'react';
+import { useTabVault } from '../../hooks/useTabVault';
+import { getProfile, getSession } from '../../lib/auth';
 import { getCheckoutUrl } from '../../lib/billing';
-import { AUTO_SAVE_VISIBLE_COUNT, POPUP_WIDTH_PX, CLOUD_FREE_TAB_LIMIT } from '../../lib/constants';
+import { AUTO_SAVE_VISIBLE_COUNT, CLOUD_FREE_TAB_LIMIT } from '../../lib/constants';
 import { SubscriptionTier } from '../../lib/constants';
-import type { TabGroup, UserSettings, UserProfile } from '../../lib/types';
-import { DEFAULT_SETTINGS } from '../../lib/types';
+import type { UserProfile } from '../../lib/types';
 import { TabGroupCard } from '../../components/TabGroupCard';
 import { AuthPrompt } from '../../components/AuthPrompt';
 import { SyncStatusIndicator } from '../../components/SyncStatus';
 
 export default function App() {
-  const [groups, setGroups] = useState<TabGroup[]>([]);
-  const [storageService] = useState(() => new StorageService());
-  const [tabService, setTabService] = useState<TabService | null>(null);
+  const {
+    groups,
+    tabService,
+    settings,
+    profile,
+    setProfile,
+    selectedIds,
+    isSelectMode,
+    setIsSelectMode,
+    loadGroups,
+    handleOpenTab,
+    handleOpenGroup,
+    handleDeleteTab,
+    handleDeleteGroup,
+    handleRenameGroup,
+    handleToggleSelect,
+    handleDeleteSelected,
+    handleCancelSelect,
+    storageService,
+  } = useTabVault();
+
+  // --- Popup-specific state ---
   const [saving, setSaving] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSelectMode, setIsSelectMode] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [limitWarning, setLimitWarning] = useState<{ trying: number; remaining: number } | null>(null);
 
-  // Initialize TabService with device ID and check auth status
-  useEffect(() => {
-    async function init() {
-      const deviceId = await getOrCreateDeviceId();
-      setTabService(new TabService(storageService, deviceId));
-
-      // Load settings
-      const loadedSettings = await storageService.getSettings();
-      setSettings(loadedSettings);
-
-      // Check if user is authenticated and load profile
-      const session = await getSession();
-      setIsAuthenticated(!!session);
-      if (session) {
-        const loadedProfile = await getProfile();
-        setProfile(loadedProfile);
-      }
-    }
-    init();
-  }, [storageService]);
-
-  // Load tab groups from the correct source of truth
-  const loadGroups = useCallback(async () => {
-    const session = await getSession().catch(() => null);
-    if (session) {
-      const engine = new SyncEngine(storageService, new SyncQueue());
-      const cloudGroups = await engine.pullAllGroups();
-      setGroups(cloudGroups);
-    } else {
-      const loaded = await storageService.getTabGroups();
-      setGroups(loaded);
-    }
-  }, [storageService]);
-
-  useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
-
-  // Listen for storage changes for live updates
-  useEffect(() => {
-    function handleStorageChanged() {
-      loadGroups();
-    }
-
-    chrome.storage.onChanged.addListener(handleStorageChanged);
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChanged);
-    };
-  }, [loadGroups]);
+  // Check auth status on mount (popup-specific: tracks isAuthenticated separately)
+  useState(() => {
+    getSession().then((session) => setIsAuthenticated(!!session));
+  });
 
   // Save current tabs
   async function handleSaveTabs() {
@@ -99,13 +64,12 @@ export default function App() {
       if (p) setProfile(p);
 
       // Notify other views (full-page) that save is fully complete
-      // so they can refresh with up-to-date Supabase data
       chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
 
       // Show auth prompt after first save if not authenticated
       if (!isAuthenticated) {
-        const settings = await storageService.getSettings();
-        if (!settings.hasSeenCloudPrompt) {
+        const currentSettings = await storageService.getSettings();
+        if (!currentSettings.hasSeenCloudPrompt) {
           await storageService.updateSettings({ hasSeenCloudPrompt: true });
           setShowAuthPrompt(true);
         }
@@ -127,70 +91,6 @@ export default function App() {
     setIsAuthenticated(true);
   }
 
-  // Open a single tab
-  function handleOpenTab(url: string) {
-    tabService?.openTab(url);
-  }
-
-  // Restore all tabs in a group
-  function handleOpenGroup(groupId: string) {
-    tabService?.openGroup(groupId, settings.restoreBehavior === 'remove');
-  }
-
-  // Delete a tab from a group
-  async function handleDeleteTab(groupId: string, tabId: string) {
-    await tabService?.deleteTab(groupId, tabId);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
-  }
-
-  // Delete an entire group
-  async function handleDeleteGroup(groupId: string) {
-    await tabService?.deleteGroup(groupId);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
-  }
-
-  // Rename a group
-  function handleRenameGroup(groupId: string, newName: string) {
-    tabService?.renameGroup(groupId, newName);
-  }
-
-  // Toggle group selection
-  function handleToggleSelect(groupId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  }
-
-  // Bulk delete selected groups
-  async function handleDeleteSelected() {
-    if (selectedIds.size === 0) return;
-    await tabService?.deleteGroups([...selectedIds]);
-    setSelectedIds(new Set());
-    setIsSelectMode(false);
-    await loadGroups();
-    const p = await getProfile();
-    if (p) setProfile(p);
-    chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
-  }
-
-  // Exit select mode
-  function handleCancelSelect() {
-    setSelectedIds(new Set());
-    setIsSelectMode(false);
-  }
-
   // Split groups into manual and auto-save
   const manualGroups = groups.filter((g) => !g.isAutoSave);
   const autoGroups = groups.filter((g) => g.isAutoSave);
@@ -210,7 +110,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col bg-[#F8F9FA]" style={{ width: `${POPUP_WIDTH_PX}px`, height: '600px' }}>
+    <div className="flex flex-col bg-[#F8F9FA]" style={{ width: '400px', height: '600px' }}>
       {/* Header — fixed top */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center justify-between">

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TabGroup, SavedTab } from '@/lib/types';
+import type { ReactNode } from 'react';
 
 /**
  * Helper to create a SavedTab for testing.
@@ -31,6 +32,60 @@ function makeTabGroup(overrides: Partial<TabGroup> = {}): TabGroup {
     ...overrides,
   };
 }
+
+describe('highlightMatch logic', () => {
+  // Replicate the fixed highlightMatch from SearchResultItem
+  function highlightMatch(text: string, query: string): string[] {
+    const trimmed = query.trim();
+    if (!trimmed) return [text];
+
+    const lower = text.toLowerCase();
+    const qLower = trimmed.toLowerCase();
+    const matchLen = trimmed.length;
+    const parts: string[] = [];
+    let lastIndex = 0;
+
+    let index = lower.indexOf(qLower);
+    while (index !== -1) {
+      if (index > lastIndex) {
+        parts.push(text.slice(lastIndex, index));
+      }
+      parts.push(`[${text.slice(index, index + matchLen)}]`); // brackets = highlight
+      lastIndex = index + matchLen;
+      index = lower.indexOf(qLower, lastIndex);
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts;
+  }
+
+  it('highlights the matching substring', () => {
+    const result = highlightMatch('React Documentation', 'react');
+    expect(result).toEqual(['[React]', ' Documentation']);
+  });
+
+  it('handles trailing whitespace in query correctly', () => {
+    // Before the fix, this would slice wrong because query.length !== trimmed.length
+    const result = highlightMatch('React Documentation', 'react   ');
+    expect(result).toEqual(['[React]', ' Documentation']);
+  });
+
+  it('highlights multiple occurrences', () => {
+    const result = highlightMatch('test one test two', 'test');
+    expect(result).toEqual(['[test]', ' one ', '[test]', ' two']);
+  });
+
+  it('returns the original text when query is empty', () => {
+    expect(highlightMatch('hello', '')).toEqual(['hello']);
+  });
+
+  it('returns the original text when query is whitespace-only', () => {
+    expect(highlightMatch('hello', '   ')).toEqual(['hello']);
+  });
+});
 
 describe('SearchBar component', () => {
   it('exports SearchBar component', async () => {
@@ -207,6 +262,39 @@ describe('Search/filter logic for full-page view', () => {
     expect(result[0].tabs[0].title).toBe('React Docs');
     expect(result[1].tabs).toHaveLength(1);
     expect(result[1].tabs[0].title).toBe('React Router');
+  });
+
+  it('flat search results include group name and date metadata', () => {
+    const groups = [
+      makeTabGroup({
+        id: 'g1',
+        name: 'Work Tabs',
+        createdAt: new Date('2024-06-15T14:30:00').getTime(),
+        tabs: [
+          makeSavedTab({ id: 't1', title: 'React Docs', url: 'https://react.dev' }),
+          makeSavedTab({ id: 't2', title: 'TypeScript Handbook', url: 'https://ts.dev' }),
+        ],
+      }),
+    ];
+
+    // Replicate the flat search logic from tabs/App.tsx
+    const query = 'react';
+    const q = query.toLowerCase().trim();
+    const results = groups.flatMap((group) => {
+      const date = new Date(group.createdAt).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+      return group.tabs
+        .filter((tab) => tab.title.toLowerCase().includes(q) || tab.url.toLowerCase().includes(q))
+        .map((tab) => ({ tab, groupName: group.name, groupDate: date }));
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].tab.title).toBe('React Docs');
+    expect(results[0].groupName).toBe('Work Tabs');
   });
 
   it('full-page view shows ALL auto-save groups (no limit)', () => {

@@ -1,10 +1,17 @@
-import type { SavedTab, TabGroup, SaveResult } from './types';
+import type { SavedTab, TabGroup, SaveResult, SubGroup, CategorizationStatus } from './types';
 import type { StorageService } from './storage';
 import { getSession, getProfile } from './auth';
 import { getSupabase } from './supabase';
 import { SyncEngine } from './sync';
 import { SyncQueue } from './sync-queue';
-import { CLOUD_FREE_TAB_LIMIT, SubscriptionTier } from './constants';
+import { categorizeTabs } from './categorize';
+import { checkForAbuse } from './abuse';
+import {
+  CLOUD_FREE_TAB_LIMIT,
+  SubscriptionTier,
+  CATEGORIZATION_STATUS,
+  ABUSE_CHECK_RESULT,
+} from './constants';
 
 const FILTERED_PROTOCOLS = ['chrome:', 'edge:', 'brave:', 'opera:', 'about:', 'chrome-extension:'];
 
@@ -114,7 +121,97 @@ export class TabService {
       }
     }
 
+    // Set initial status so UI knows categorization is coming
+    group.categorizationStatus = CATEGORIZATION_STATUS.PENDING;
+    await this.storage.saveTabGroup(group);
+
+    // Fire and forget — no await, user never waits for this
+    const catSession = await getSession().catch(() => null);
+    if (catSession?.user?.id) {
+      this.runCategorizationJob(group, catSession.user.id);
+    }
+
     return { success: true, group };
+  }
+
+  private async runCategorizationJob(
+    group: TabGroup,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const abuseResult = await checkForAbuse(userId);
+
+      if (abuseResult === ABUSE_CHECK_RESULT.BLOCKED) {
+        await this.updateGroupCategorizationStatus(
+          group.id,
+          CATEGORIZATION_STATUS.FAILED,
+        );
+        return;
+      }
+
+      await this.updateGroupCategorizationStatus(
+        group.id,
+        CATEGORIZATION_STATUS.PROCESSING,
+      );
+
+      const result = await categorizeTabs(group.tabs);
+
+      if (!result) {
+        await this.updateGroupCategorizationStatus(
+          group.id,
+          CATEGORIZATION_STATUS.FAILED,
+        );
+        return;
+      }
+
+      await this.updateGroupWithCategories(group.id, result);
+    } catch {
+      await this.updateGroupCategorizationStatus(
+        group.id,
+        CATEGORIZATION_STATUS.FAILED,
+      );
+    }
+  }
+
+  private async updateGroupCategorizationStatus(
+    groupId: string,
+    status: CategorizationStatus,
+  ): Promise<void> {
+    const groups = await this.storage.getTabGroups();
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+
+    group.categorizationStatus = status;
+    group.updatedAt = Date.now();
+    await this.storage.saveTabGroup(group);
+  }
+
+  private async updateGroupWithCategories(
+    groupId: string,
+    result: { subGroups: SubGroup[]; summary: string; tags: string[] },
+  ): Promise<void> {
+    const groups = await this.storage.getTabGroups();
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+
+    group.subGroups = result.subGroups;
+    group.summary = result.summary;
+    group.tags = result.tags;
+    group.categorizationStatus = CATEGORIZATION_STATUS.DONE;
+    group.updatedAt = Date.now();
+
+    await this.storage.saveTabGroup(group);
+
+    // Push categorization results to cloud so other devices see them
+    try {
+      const session = await getSession();
+      if (session) {
+        const engine = new SyncEngine(this.storage, new SyncQueue());
+        await engine.pushGroup(group).catch(() => {});
+      }
+    } catch {
+      // Not authenticated or no Supabase — skip
+    }
   }
 
   async renameGroup(groupId: string, newName: string): Promise<void> {

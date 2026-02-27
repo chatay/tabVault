@@ -84,11 +84,24 @@ export async function encrypt(
   return ENCRYPTED_PREFIX + toBase64(combined);
 }
 
+/**
+ * Returns true if a string looks like corrupted ciphertext that lost its
+ * `enc:` prefix (e.g., due to storage truncation). Legacy plaintext
+ * (URLs, titles) should only contain printable ASCII + valid UTF-8.
+ */
+function looksCorrupted(value: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /[\x00-\x08\x0E-\x1F]/.test(value);
+}
+
 export async function decrypt(
   value: string,
   key: CryptoKey,
 ): Promise<string> {
   if (!value.startsWith(ENCRYPTED_PREFIX)) {
+    if (looksCorrupted(value)) {
+      throw new Error('Possibly corrupted ciphertext: value lacks enc: prefix but contains non-printable characters');
+    }
     return value; // Legacy plaintext
   }
 

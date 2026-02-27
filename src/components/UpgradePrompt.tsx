@@ -20,7 +20,7 @@ export function UpgradePrompt({ tabCount, onDismiss }: UpgradePromptProps) {
       <div className="flex gap-2">
         <button
           className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
-          onClick={() => chrome.tabs.create({ url: checkoutUrl })}
+          onClick={() => { if (checkoutUrl) chrome.tabs.create({ url: checkoutUrl }); }}
         >
           Upgrade
         </button>

@@ -84,4 +84,15 @@ describe('UpgradePrompt component', () => {
       screen.getByText("You've saved 73 of 75 free cloud tabs!"),
     ).toBeTruthy();
   });
+
+  it('does NOT call chrome.tabs.create when checkout URL is empty', async () => {
+    // Override the mock to return an empty string for this test
+    const { getCheckoutUrl } = await import('@/lib/billing');
+    vi.mocked(getCheckoutUrl).mockReturnValueOnce('');
+
+    render(<UpgradePrompt tabCount={50} onDismiss={vi.fn()} />);
+    const upgradeButton = screen.getByText('Upgrade');
+    fireEvent.click(upgradeButton);
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+  });
 });

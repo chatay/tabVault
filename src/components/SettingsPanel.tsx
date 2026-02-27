@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { UserSettings, UserProfile } from '../lib/types';
 import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT } from '../lib/constants';
-import { sendOtp, verifyOtp } from '../lib/auth';
 import { getCheckoutUrl } from '../lib/billing';
 import { SyncStatusIndicator } from './SyncStatus';
+import { OtpAuthFlow } from './OtpAuthFlow';
 
 interface SettingsPanelProps {
   settings: UserSettings;
@@ -210,101 +210,9 @@ function AccountLoggedIn({
   );
 }
 
-// --- Account State 1: Logged Out (with OTP sub-states) ---
+// --- Account State 1: Logged Out (uses shared OTP flow) ---
 
 function AccountLoggedOut({ onSignIn }: { onSignIn: () => void }) {
-  const [step, setStep] = useState<'email' | 'code'>('email');
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleSendCode() {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setLoading(true);
-    setError(null);
-    const result = await sendOtp(trimmed);
-    setLoading(false);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setStep('code');
-    }
-  }
-
-  async function handleResendCode() {
-    setLoading(true);
-    setError(null);
-    const result = await sendOtp(email.trim());
-    setLoading(false);
-    if (result.error) {
-      setError(result.error);
-    }
-  }
-
-  async function handleVerifyCode() {
-    if (code.length !== 8) return;
-    setLoading(true);
-    setError(null);
-    const result = await verifyOtp(email.trim(), code.trim());
-    setLoading(false);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      onSignIn();
-    }
-  }
-
-  function handleUseDifferentEmail() {
-    setStep('email');
-    setCode('');
-    setError(null);
-  }
-
-  if (step === 'code') {
-    return (
-      <div>
-        <p className="text-sm text-gray-600 mb-3">
-          We sent an 8-digit code to <strong>{email.trim()}</strong>
-        </p>
-        <input
-          type="text"
-          className="w-full border border-gray-200 rounded-lg px-3 min-h-[44px] text-sm tracking-widest text-center mb-3"
-          placeholder="00000000"
-          maxLength={8}
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-          onKeyDown={(e) => e.key === 'Enter' && handleVerifyCode()}
-          autoFocus
-        />
-        <button
-          className="w-full bg-blue-600 text-white text-sm font-medium px-4 min-h-[44px] rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onClick={handleVerifyCode}
-          disabled={loading || code.length !== 8}
-        >
-          {loading ? 'Verifying...' : 'Verify'}
-        </button>
-        <div className="flex items-center gap-4 mt-3 justify-center">
-          <button
-            className="text-xs text-blue-600 hover:text-blue-800 min-h-[44px] transition-colors"
-            onClick={handleResendCode}
-            disabled={loading}
-          >
-            Resend code
-          </button>
-          <button
-            className="text-xs text-gray-500 hover:text-gray-700 min-h-[44px] transition-colors"
-            onClick={handleUseDifferentEmail}
-          >
-            Use a different email
-          </button>
-        </div>
-        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
-      </div>
-    );
-  }
-
   return (
     <div>
       {/* Cloud icon */}
@@ -316,25 +224,12 @@ function AccountLoggedOut({ onSignIn }: { onSignIn: () => void }) {
       <h3 className="text-sm font-bold text-[#1e3a5f] text-center mb-1">
         Back up your tabs to the cloud
       </h3>
-      <p className="text-xs text-gray-500 text-center mb-4">
-        Your tabs are saved on this device only. Add your email to protect them — free for up to 75 tabs.
-      </p>
-      <input
-        type="email"
-        className="w-full border border-gray-200 rounded-lg px-3 min-h-[44px] text-sm mb-3"
-        placeholder="your@email.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && handleSendCode()}
+      <OtpAuthFlow
+        onSuccess={onSignIn}
+        submitLabel="Protect my tabs"
+        description="Your tabs are saved on this device only. Add your email to protect them — free for up to 75 tabs."
+        variant="full"
       />
-      <button
-        className="w-full bg-blue-600 text-white text-sm font-medium px-4 min-h-[44px] rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        onClick={handleSendCode}
-        disabled={loading || !email.trim()}
-      >
-        {loading ? 'Sending...' : 'Protect my tabs'}
-      </button>
-      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
     </div>
   );
 }

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TabGroup } from '../lib/types';
 import { TabItem } from './TabItem';
+import { SubGroupSection } from './SubGroupSection';
 import {
   TAB_LIST_MAX_HEIGHT_PX,
   TAB_GROUP_INITIAL_VISIBLE,
   TAB_GROUP_LOAD_MORE_BATCH,
+  CATEGORIZATION_STATUS,
 } from '../lib/constants';
 
 interface TabGroupCardProps {
@@ -32,6 +34,13 @@ export function TabGroupCard({
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Keep editName in sync when the group name changes externally (e.g., cloud pull)
+  useEffect(() => {
+    if (!isEditing) {
+      setEditName(group.name);
+    }
+  }, [group.name, isEditing]);
   const [visibleCount, setVisibleCount] = useState(TAB_GROUP_INITIAL_VISIBLE);
 
   function handleRenameSubmit() {
@@ -147,11 +156,23 @@ export function TabGroupCard({
               >
                 {group.name}
               </div>
+              {group.summary && (
+                <div
+                  className="text-[12px] truncate mt-[2px]"
+                  style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}
+                >
+                  {group.summary}
+                </div>
+              )}
               <div
                 className="text-[11px] mt-[2px]"
                 style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}
               >
-                {group.tabs.length} {group.tabs.length === 1 ? 'tab' : 'tabs'} · {formattedDate}
+                {group.tabs.length} {group.tabs.length === 1 ? 'tab' : 'tabs'}
+                {group.subGroups && group.subGroups.length > 0
+                  ? ` \u00b7 ${group.subGroups.length} sub-groups`
+                  : ''
+                } · {formattedDate}
               </div>
             </>
           )}
@@ -213,43 +234,101 @@ export function TabGroupCard({
         </div>
       </div>
 
-      {/* Tab list */}
+      {/* Categorization loading indicator */}
+      {(group.categorizationStatus === CATEGORIZATION_STATUS.PENDING ||
+        group.categorizationStatus === CATEGORIZATION_STATUS.PROCESSING) && (
+        <div
+          className="flex items-center gap-[6px] px-[16px] py-[8px]"
+          style={{ color: 'var(--text-muted)', fontSize: '12px' }}
+        >
+          <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>&#10227;</span>
+          <span>Organizing your tabs...</span>
+        </div>
+      )}
+
+      {/* Tags */}
+      {group.tags && group.tags.length > 0 && (
+        <div className="flex flex-wrap gap-[4px] px-[16px] py-[8px]">
+          {group.tags.map(tag => (
+            <span
+              key={tag}
+              className="text-[10px] font-medium rounded-full"
+              style={{
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent)',
+                color: 'var(--accent)',
+                padding: '2px 8px',
+              }}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Expanded content */}
       {isExpanded && group.tabs.length > 0 && (
         <>
-          <div
-            style={{
-              borderTop: '1px solid var(--border)',
-              maxHeight: `${TAB_LIST_MAX_HEIGHT_PX}px`,
-              overflowY: 'auto',
-            }}
-          >
-            {group.tabs.slice(0, visibleCount).map((tab) => (
-              <TabItem
-                key={tab.id}
-                tab={tab}
-                onOpen={onOpenTab}
-                onDelete={(tabId) => onDeleteTab(group.id, tabId)}
-              />
-            ))}
-          </div>
-          {visibleCount < group.tabs.length && (
-            <button
-              className="w-full text-[12px] font-medium cursor-pointer"
-              style={{
-                padding: '10px 16px',
-                color: 'var(--accent)',
-                background: 'var(--surface-2)',
-                border: 'none',
-                borderTop: '1px solid var(--border)',
-                fontFamily: "'DM Sans', sans-serif",
-                transition: 'background 0.12s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onClick={() => setVisibleCount((c) => c + TAB_GROUP_LOAD_MORE_BATCH)}
-            >
-              Show {Math.min(TAB_GROUP_LOAD_MORE_BATCH, group.tabs.length - visibleCount)} more of {group.tabs.length - visibleCount} remaining
-            </button>
+          {/* Sub-group view (when AI categorization is done) */}
+          {group.subGroups &&
+           group.subGroups.length > 0 &&
+           group.categorizationStatus === CATEGORIZATION_STATUS.DONE ? (
+            <div style={{ borderTop: '1px solid var(--border)', padding: '12px' }}>
+              {[...group.subGroups]
+                .sort((a, b) => {
+                  const aIsOther = /^other$/i.test(a.name.trim());
+                  const bIsOther = /^other$/i.test(b.name.trim());
+                  if (aIsOther && !bIsOther) return 1;
+                  if (!aIsOther && bIsOther) return -1;
+                  return 0;
+                })
+                .map(subGroup => (
+                  <SubGroupSection
+                    key={subGroup.id}
+                    subGroup={subGroup}
+                    onOpenTab={onOpenTab}
+                  />
+                ))}
+            </div>
+          ) : (
+            /* Flat tab list fallback */
+            <>
+              <div
+                style={{
+                  borderTop: '1px solid var(--border)',
+                  maxHeight: `${TAB_LIST_MAX_HEIGHT_PX}px`,
+                  overflowY: 'auto',
+                }}
+              >
+                {group.tabs.slice(0, visibleCount).map((tab) => (
+                  <TabItem
+                    key={tab.id}
+                    tab={tab}
+                    onOpen={onOpenTab}
+                    onDelete={(tabId) => onDeleteTab(group.id, tabId)}
+                  />
+                ))}
+              </div>
+              {visibleCount < group.tabs.length && (
+                <button
+                  className="w-full text-[12px] font-medium cursor-pointer"
+                  style={{
+                    padding: '10px 16px',
+                    color: 'var(--accent)',
+                    background: 'var(--surface-2)',
+                    border: 'none',
+                    borderTop: '1px solid var(--border)',
+                    fontFamily: "'DM Sans', sans-serif",
+                    transition: 'background 0.12s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  onClick={() => setVisibleCount((c) => c + TAB_GROUP_LOAD_MORE_BATCH)}
+                >
+                  Show {Math.min(TAB_GROUP_LOAD_MORE_BATCH, group.tabs.length - visibleCount)} more of {group.tabs.length - visibleCount} remaining
+                </button>
+              )}
+            </>
           )}
         </>
       )}

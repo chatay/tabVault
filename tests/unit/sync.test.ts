@@ -278,6 +278,9 @@ describe('SyncEngine', () => {
         is_auto_save: false,
         created_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
+        sub_groups: null,
+        summary: null,
+        tags: null,
       });
     });
 
@@ -410,6 +413,9 @@ describe('SyncEngine', () => {
                 device_id: 'dev-abc',
                 created_at: now,
                 updated_at: now,
+                sub_groups: null,
+                summary: null,
+                tags: null,
                 tabs: [
                   {
                     id: 't1',
@@ -451,6 +457,9 @@ describe('SyncEngine', () => {
                 device_id: 'dev-1',
                 created_at: now,
                 updated_at: now,
+                sub_groups: null,
+                summary: null,
+                tags: null,
                 tabs: [
                   { id: 't2', url: 'b.com', title: 'B', favicon_url: null, position: 1, created_at: now },
                   { id: 't1', url: 'a.com', title: 'A', favicon_url: null, position: 0, created_at: now },

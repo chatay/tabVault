@@ -11,10 +11,12 @@ interface SearchResultItemProps {
 }
 
 function highlightMatch(text: string, query: string): ReactNode[] {
-  if (!query) return [text];
+  const trimmed = query.trim();
+  if (!trimmed) return [text];
 
   const lower = text.toLowerCase();
-  const qLower = query.toLowerCase();
+  const qLower = trimmed.toLowerCase();
+  const matchLen = trimmed.length;
   const parts: ReactNode[] = [];
   let lastIndex = 0;
 
@@ -29,10 +31,10 @@ function highlightMatch(text: string, query: string): ReactNode[] {
         className="font-semibold rounded-[3px] px-[2px]"
         style={{ background: 'var(--highlight)', color: 'var(--highlight-text)' }}
       >
-        {text.slice(index, index + query.length)}
+        {text.slice(index, index + matchLen)}
       </mark>,
     );
-    lastIndex = index + query.length;
+    lastIndex = index + matchLen;
     index = lower.indexOf(qLower, lastIndex);
   }
 
