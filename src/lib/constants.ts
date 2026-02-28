@@ -87,9 +87,15 @@ export const SMART_SEARCH = {
 export const NAV_TAB = {
   MY_TABS: 'my-tabs',
   SMART_SEARCH: 'smart-search',
+  INSIGHTS: 'insights',
 } as const;
 
 export type NavTab = typeof NAV_TAB[keyof typeof NAV_TAB];
+
+// === Insights ===
+export const INSIGHTS = {
+  FORGOTTEN_TAB_THRESHOLD_DAYS: 30,
+} as const;
 
 // === UI ===
 export const POPUP_WIDTH_PX = 400;

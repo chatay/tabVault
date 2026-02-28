@@ -8,6 +8,7 @@ import { SearchBar } from '../../components/SearchBar';
 import { SearchResultItem } from '../../components/SearchResultItem';
 import { SettingsPanel } from '../../components/SettingsPanel';
 import { SmartSearch } from '../../components/SmartSearch';
+import { InsightsView, type CleanupProgress } from '../../components/InsightsView';
 import { computeGroupDuplicateDetails } from '../../lib/duplicates';
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
 
   // --- Tabs-specific state ---
   const [searchQuery, setSearchQuery] = useState('');
+  const [cleanupProgress, setCleanupProgress] = useState<CleanupProgress | undefined>(undefined);
   const [activeNav, setActiveNav] = useState<NavTab>(NAV_TAB.MY_TABS);
   const [showSettings, setShowSettings] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -126,6 +128,18 @@ export default function App() {
     if (tab !== NAV_TAB.MY_TABS) {
       setSearchQuery('');
       if (isSelectMode) handleCancelSelect();
+    }
+  }
+
+  async function handleCleanupAllDuplicates(items: Array<{ groupId: string; tabId: string }>) {
+    setCleanupProgress({ done: 0, total: items.length });
+    try {
+      for (let i = 0; i < items.length; i++) {
+        await handleDeleteTab(items[i].groupId, items[i].tabId);
+        setCleanupProgress({ done: i + 1, total: items.length });
+      }
+    } finally {
+      setCleanupProgress(undefined);
     }
   }
 
@@ -236,6 +250,15 @@ export default function App() {
                 onClick={() => handleNavChange(NAV_TAB.SMART_SEARCH)}
               >
                 ✦ Smart Search
+              </button>
+              <button
+                className={`nav-tab${activeNav === NAV_TAB.INSIGHTS ? ' active' : ''}`}
+                onClick={() => handleNavChange(NAV_TAB.INSIGHTS)}
+              >
+                Insights
+                {cleanupProgress !== undefined && (
+                  <span className="nav-busy-dot" />
+                )}
               </button>
             </div>
 
@@ -376,6 +399,17 @@ export default function App() {
                 groups={groups}
                 isAuthenticated={profile !== null}
                 onOpenTab={handleOpenTab}
+              />
+            )}
+
+            {/* ─── INSIGHTS VIEW ─── */}
+            {activeNav === NAV_TAB.INSIGHTS && (
+              <InsightsView
+                groups={groups}
+                onDeleteTab={handleDeleteTab}
+                onOpenTab={handleOpenTab}
+                cleanupProgress={cleanupProgress}
+                onCleanupAll={handleCleanupAllDuplicates}
               />
             )}
           </>

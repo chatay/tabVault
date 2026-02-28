@@ -149,6 +149,16 @@ export class TabService {
     }
 
     await this.storage.saveTabGroup(group);
+
+    try {
+      const session = await getSession();
+      if (session) {
+        const engine = new SyncEngine(this.storage, new SyncQueue());
+        await engine.pushGroup(group).catch(() => {});
+      }
+    } catch {
+      // No Supabase config or not authenticated — skip cloud sync
+    }
   }
 
   async deleteTab(groupId: string, tabId: string): Promise<void> {
@@ -157,6 +167,15 @@ export class TabService {
     if (!group) return;
 
     group.tabs = group.tabs.filter((t) => t.id !== tabId);
+
+    // Keep subGroups in sync — tab exists in both group.tabs AND subGroup.tabs
+    if (group.subGroups) {
+      for (const subGroup of group.subGroups) {
+        subGroup.tabs = subGroup.tabs.filter((t) => t.id !== tabId);
+      }
+      group.subGroups = group.subGroups.filter((sg) => sg.tabs.length > 0);
+    }
+
     group.updatedAt = Date.now();
     await this.storage.saveTabGroup(group);
 
@@ -165,6 +184,11 @@ export class TabService {
       const supabase = getSupabase();
       await supabase.from('tabs').delete().eq('id', tabId);
       await supabase.rpc('recalculate_tab_count', { p_user_id: session.user.id });
+      // Push the updated group so the sub_groups blob in tab_groups is also
+      // updated — otherwise pullAllGroups() will re-hydrate the deleted tab
+      // from the stale encrypted sub_groups JSON.
+      const engine = new SyncEngine(this.storage, new SyncQueue());
+      await engine.pushGroup(group).catch(() => {});
     }
   }
 
@@ -215,6 +239,18 @@ export class TabService {
 
     await this.storage.saveTabGroup(fromGroup);
     await this.storage.saveTabGroup(toGroup);
+
+    try {
+      const session = await getSession();
+      if (session) {
+        const engine = new SyncEngine(this.storage, new SyncQueue());
+        // pushGroup(toGroup) upserts the tab with the new group_id (moves it in Supabase)
+        await engine.pushGroup(toGroup).catch(() => {});
+        await engine.pushGroup(fromGroup).catch(() => {});
+      }
+    } catch {
+      // No Supabase config or not authenticated — skip cloud sync
+    }
   }
 
   async syncAllToCloud(): Promise<void> {
@@ -233,6 +269,21 @@ export class TabService {
   }
 
   async openTab(url: string): Promise<void> {
+    const now = Date.now();
+    const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+    const groups = await this.storage.getTabGroups();
+
+    for (const group of groups) {
+      let changed = false;
+      for (const tab of group.tabs) {
+        if (!tab.lastOpenedAt && tab.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl) {
+          tab.lastOpenedAt = now;
+          changed = true;
+        }
+      }
+      if (changed) await this.storage.saveTabGroup(group);
+    }
+
     await chrome.tabs.create({ url });
   }
 

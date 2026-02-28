@@ -11,6 +11,7 @@ export interface SavedTab {
   faviconUrl: string | null;
   position: number;
   createdAt: number;
+  lastOpenedAt?: number;
 }
 
 export interface SubGroup {

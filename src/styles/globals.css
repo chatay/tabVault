@@ -679,3 +679,249 @@ body {
 .smart-search-idle {
   padding: 20px 0;
 }
+
+/* ─── INSIGHTS ─────────────────────────────────────────────────────────────── */
+
+.insights-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 4px 0 2px;
+}
+
+.insights-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--green);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.insights-duplicate-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease;
+}
+
+.insights-duplicate-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.insights-duplicate-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'DM Mono', monospace;
+  word-break: break-all;
+}
+
+.insights-occurrence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s ease;
+}
+
+.insights-occurrence:last-child {
+  border-bottom: none;
+}
+
+.insights-occurrence:hover {
+  background: var(--surface-2);
+}
+
+.insights-keep-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: 99px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.insights-delete-btn {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--red);
+  background: transparent;
+  border: 1px solid var(--red-border);
+  border-radius: 99px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  white-space: nowrap;
+}
+
+.insights-delete-btn:hover {
+  background: var(--red-soft);
+}
+
+.insights-delete-btn--loading {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.insights-cleanup-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 99px;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  white-space: nowrap;
+}
+
+.insights-cleanup-btn:hover {
+  background: var(--accent-hover);
+  color: white;
+}
+
+.insights-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.insights-confirm-yes {
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  background: var(--red);
+  border: none;
+  border-radius: 99px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.insights-confirm-yes:hover {
+  opacity: 0.85;
+}
+
+.insights-confirm-cancel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.insights-confirm-cancel:hover {
+  background: var(--surface-2);
+}
+
+/* Disabled state for delete buttons during bulk cleanup */
+.insights-delete-btn:disabled,
+.insights-confirm-yes:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Progress text shown during bulk cleanup */
+.insights-cleanup-progress {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+}
+
+/* Pulsing dot on the Insights nav tab while cleanup is running */
+.nav-tab {
+  position: relative;
+}
+
+.nav-busy-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  margin-left: 5px;
+  vertical-align: middle;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.nav-tab.active .nav-busy-dot {
+  background: white;
+}
+
+.insights-error {
+  font-size: 12px;
+  color: var(--red);
+  padding: 4px 0;
+}
+
+.insights-forgotten-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 13px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  transition: box-shadow 0.15s ease;
+  min-height: 64px;
+}
+
+.insights-forgotten-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.insights-forgotten-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.insights-forgotten-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+}
+
+.insights-open-btn {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 99px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  white-space: nowrap;
+}
+
+.insights-open-btn:hover {
+  background: var(--accent-hover);
+  color: white;
+}
