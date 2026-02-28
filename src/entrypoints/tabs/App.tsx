@@ -7,6 +7,7 @@ import { TabGroupCard } from '../../components/TabGroupCard';
 import { SearchBar } from '../../components/SearchBar';
 import { SearchResultItem } from '../../components/SearchResultItem';
 import { SettingsPanel } from '../../components/SettingsPanel';
+import { findDuplicates, getDuplicateCountForGroup } from '../../lib/duplicates';
 
 export default function App() {
   const {
@@ -81,6 +82,9 @@ export default function App() {
   // Total tab count
   const totalTabs = groups.reduce((sum, g) => sum + g.tabs.length, 0);
 
+  // Duplicate detection — recomputed only when groups change
+  const duplicateReport = useMemo(() => findDuplicates(groups), [groups]);
+
   // Settings handlers
   function handleSettingsBack() {
     setShowSettings(false);
@@ -133,6 +137,7 @@ export default function App() {
             onUpdate={updateSettings}
             onBack={handleSettingsBack}
             profile={profile}
+            onProfileChange={setProfile}
             onSignOut={handleSignOut}
             onSignIn={handleSignIn}
           />
@@ -387,6 +392,7 @@ export default function App() {
                     onRenameGroup={handleRenameGroup}
                     isSelected={selectedIds.has(group.id)}
                     onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
+                    duplicateCount={getDuplicateCountForGroup(duplicateReport, group.id)}
                   />
                 ))}
               </div>
@@ -415,6 +421,7 @@ export default function App() {
                     onRenameGroup={handleRenameGroup}
                     isSelected={selectedIds.has(group.id)}
                     onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
+                    duplicateCount={getDuplicateCountForGroup(duplicateReport, group.id)}
                   />
                 ))}
               </div>

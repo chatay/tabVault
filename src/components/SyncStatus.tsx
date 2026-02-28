@@ -4,11 +4,11 @@ import { SyncQueue } from '../lib/sync-queue';
 import { StorageService } from '../lib/storage';
 import type { SyncStatus as SyncStatusType } from '../lib/types';
 
-const statusConfig: Record<SyncStatusType, { label: string; color: string }> = {
-  synced: { label: 'Synced', color: 'text-green-600' },
-  syncing: { label: 'Syncing...', color: 'text-blue-600' },
-  pending: { label: 'Sync pending', color: 'text-orange-500' },
-  failed: { label: 'Sync failed', color: 'text-red-600' },
+const statusConfig: Record<SyncStatusType, { label: string; cssColor: string }> = {
+  synced: { label: 'Synced', cssColor: 'var(--green)' },
+  syncing: { label: 'Syncing...', cssColor: 'var(--accent)' },
+  pending: { label: 'Sync pending', cssColor: 'var(--warning)' },
+  failed: { label: 'Sync failed', cssColor: 'var(--red)' },
 };
 
 export function SyncStatusIndicator() {
@@ -31,7 +31,7 @@ export function SyncStatusIndicator() {
   const config = statusConfig[status];
 
   return (
-    <span className={`text-xs ${config.color}`}>
+    <span className="text-xs" style={{ color: config.cssColor }}>
       {config.label}
     </span>
   );

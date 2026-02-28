@@ -5,6 +5,7 @@ import { SyncQueue } from './sync-queue';
 import { getOrCreateDeviceId } from './device';
 import { getOrDeriveKey, encrypt, decrypt, encryptNullable, decryptNullable } from './crypto';
 import type { TabGroup, SavedTab, SyncStatus } from './types';
+import { dlog } from './debug-log';
 import {
   STORAGE_KEY_SYNC_FAIL_COUNT,
   STORAGE_KEY_FIRST_SYNC_FAIL_AT,
@@ -168,7 +169,7 @@ export class SyncEngine {
 
     const { data: remoteGroups, error } = await supabase
       .from('tab_groups')
-      .select('*, tabs(*)')
+      .select('id, name, is_auto_save, device_id, created_at, updated_at, sub_groups, summary, tags, tabs(id, url, title, favicon_url, position, created_at)')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
@@ -185,7 +186,8 @@ export class SyncEngine {
           subGroups = rg.sub_groups
             ? JSON.parse(await decrypt(rg.sub_groups, key))
             : undefined;
-        } catch {
+        } catch (e) {
+          dlog.warn('Failed to decrypt sub_groups for group', rg.id, e);
           subGroups = undefined;
         }
 
@@ -193,7 +195,8 @@ export class SyncEngine {
           summary = rg.summary
             ? await decrypt(rg.summary, key)
             : undefined;
-        } catch {
+        } catch (e) {
+          dlog.warn('Failed to decrypt summary for group', rg.id, e);
           summary = undefined;
         }
 
@@ -201,7 +204,8 @@ export class SyncEngine {
           tags = rg.tags
             ? JSON.parse(await decrypt(rg.tags, key))
             : undefined;
-        } catch {
+        } catch (e) {
+          dlog.warn('Failed to decrypt tags for group', rg.id, e);
           tags = undefined;
         }
 

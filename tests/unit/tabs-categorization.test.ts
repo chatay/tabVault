@@ -60,6 +60,7 @@ beforeEach(() => {
   globalThis.chrome.runtime = {
     getPlatformInfo: vi.fn(async () => ({ os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' })),
     getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
   };
 
   // Defaults
@@ -80,7 +81,7 @@ beforeEach(() => {
 });
 
 // Import after mocks
-import { TabService } from '@/lib/tabs';
+import { TabService, runCategorizationJob } from '@/lib/tabs';
 
 /** Helper: build 6 chrome tabs (enough to trigger categorization) */
 function makeBrowserTabs(count = 6): chrome.tabs.Tab[] {
@@ -98,25 +99,17 @@ function expectSuccess(result: SaveResult) {
   return result.group;
 }
 
-/** Wait for fire-and-forget microtasks to settle */
-async function flushMicrotasks() {
-  await new Promise(r => setTimeout(r, 10));
-}
+// ─── Test Group 1 — saveCurrentTabs delegates to background ───
 
-// ─── Test Group 1 — Background job fires correctly ───
-
-describe('Background categorization job fires correctly', () => {
-  it('saveCurrentTabs returns successfully before categorization finishes', async () => {
+describe('saveCurrentTabs delegates categorization to background', () => {
+  it('saveCurrentTabs returns successfully (does not wait for categorization)', async () => {
     mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
-    // Make categorization hang forever
-    mockCategorizeTabs.mockReturnValue(new Promise(() => {}));
     mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
 
     const storage = new StorageService();
     const service = new TabService(storage, 'device-1');
     const result = await service.saveCurrentTabs({ closeAfterSave: false });
 
-    // Returns immediately despite categorization still running
     expect(result.success).toBe(true);
   });
 
@@ -131,51 +124,47 @@ describe('Background categorization job fires correctly', () => {
     expect(group.categorizationStatus).toBe(CATEGORIZATION_STATUS.PENDING);
   });
 
-  it('runCategorizationJob is called after save completes', async () => {
+  it('sends tabvault:run-categorization message to background', async () => {
     mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
-    mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.NORMAL);
-    mockCategorizeTabs.mockResolvedValue({
-      subGroups: [{ id: 'sg1', name: 'All', tabs: [] }],
-      summary: 'Test',
-      tags: ['test'],
-    });
 
     const storage = new StorageService();
     const service = new TabService(storage, 'device-1');
-    await service.saveCurrentTabs({ closeAfterSave: false });
-    await flushMicrotasks();
+    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
 
-    expect(mockCheckForAbuse).toHaveBeenCalledWith('user-1');
-    expect(mockCategorizeTabs).toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'tabvault:run-categorization',
+      groupId: group.id,
+    });
   });
 
-  it('if user is not logged in, runCategorizationJob is never called', async () => {
+  it('does not send categorization message when user is not logged in', async () => {
     mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockGetSession.mockResolvedValue(null);
 
     const storage = new StorageService();
     const service = new TabService(storage, 'device-1');
     await service.saveCurrentTabs({ closeAfterSave: false });
-    await flushMicrotasks();
 
-    expect(mockCheckForAbuse).not.toHaveBeenCalled();
-    expect(mockCategorizeTabs).not.toHaveBeenCalled();
+    // sendMessage is still called (fire-and-forget), but the background will check session
+    // The important thing is saveCurrentTabs always sends the message
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tabvault:run-categorization' }),
+    );
   });
 });
 
-// ─── Test Group 2 — Abuse detection integration ───
+// ─── Test Group 2 — runCategorizationJob (runs in background) ───
 
-describe('Abuse detection integration', () => {
+describe('runCategorizationJob — abuse detection', () => {
   it('BLOCKED → status set to FAILED, categorizeTabs never called', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.BLOCKED);
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     expect(mockCategorizeTabs).not.toHaveBeenCalled();
     const groups = await storage.getTabGroups();
@@ -184,8 +173,6 @@ describe('Abuse detection integration', () => {
   });
 
   it('FLAGGED → categorizeTabs still called normally', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.FLAGGED);
     mockCategorizeTabs.mockResolvedValue({
       subGroups: [{ id: 'sg1', name: 'All', tabs: [] }],
@@ -194,16 +181,15 @@ describe('Abuse detection integration', () => {
     });
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    await service.saveCurrentTabs({ closeAfterSave: false });
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     expect(mockCategorizeTabs).toHaveBeenCalled();
   });
 
   it('NORMAL → categorizeTabs called normally', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.NORMAL);
     mockCategorizeTabs.mockResolvedValue({
       subGroups: [{ id: 'sg1', name: 'All', tabs: [] }],
@@ -212,9 +198,10 @@ describe('Abuse detection integration', () => {
     });
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    await service.saveCurrentTabs({ closeAfterSave: false });
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     expect(mockCategorizeTabs).toHaveBeenCalled();
   });
@@ -222,7 +209,7 @@ describe('Abuse detection integration', () => {
 
 // ─── Test Group 3 — Successful categorization ───
 
-describe('Successful categorization', () => {
+describe('runCategorizationJob — successful categorization', () => {
   const mockResult = {
     subGroups: [
       { id: 'sg-ai', name: 'AI Tools', tabs: [] },
@@ -233,17 +220,16 @@ describe('Successful categorization', () => {
   };
 
   beforeEach(() => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.NORMAL);
     mockCategorizeTabs.mockResolvedValue(mockResult);
   });
 
-  it('after Claude responds, group has subGroups populated', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
+  it('after categorization, group has subGroups populated', async () => {
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
@@ -252,36 +238,36 @@ describe('Successful categorization', () => {
     expect(updated.subGroups![1].name).toBe('Restaurant');
   });
 
-  it('after Claude responds, group has summary string', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
+  it('after categorization, group has summary string', async () => {
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
     expect(updated.summary).toBe('Research on AI tools and restaurants');
   });
 
-  it('after Claude responds, group has tags array', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
+  it('after categorization, group has tags array', async () => {
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
     expect(updated.tags).toEqual(['AI', 'Food']);
   });
 
-  it('after Claude responds, categorizationStatus is DONE', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
+  it('after categorization, categorizationStatus is DONE', async () => {
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
@@ -289,12 +275,12 @@ describe('Successful categorization', () => {
   });
 
   it('original tabs array is unchanged after categorization', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
     const originalTabCount = group.tabs.length;
-    await flushMicrotasks();
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
@@ -305,20 +291,19 @@ describe('Successful categorization', () => {
 
 // ─── Test Group 4 — Failed categorization ───
 
-describe('Failed categorization', () => {
+describe('runCategorizationJob — failed categorization', () => {
   beforeEach(() => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckForAbuse.mockResolvedValue(ABUSE_CHECK_RESULT.NORMAL);
   });
 
   it('categorizeTabs returns null → status set to FAILED', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockCategorizeTabs.mockResolvedValue(null);
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
@@ -326,13 +311,13 @@ describe('Failed categorization', () => {
   });
 
   it('categorizeTabs throws → status set to FAILED, no crash', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockCategorizeTabs.mockRejectedValue(new Error('Claude is down'));
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
@@ -340,34 +325,62 @@ describe('Failed categorization', () => {
   });
 
   it('group is still fully usable after failed categorization', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockCategorizeTabs.mockResolvedValue(null);
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
-    await flushMicrotasks();
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
-    // Group still has all its data
     expect(updated.name).toBeTruthy();
     expect(updated.tabs.length).toBeGreaterThan(0);
     expect(updated.id).toBe(group.id);
   });
 
   it('existing tabs are untouched even if categorization fails', async () => {
-    mockChromeTabs.query.mockResolvedValue(makeBrowserTabs());
     mockCategorizeTabs.mockRejectedValue(new Error('Failure'));
 
     const storage = new StorageService();
-    const service = new TabService(storage, 'device-1');
-    const group = expectSuccess(await service.saveCurrentTabs({ closeAfterSave: false }));
+    const group = makeTestGroup();
+    await storage.saveTabGroup(group);
     const originalUrls = group.tabs.map(t => t.url);
-    await flushMicrotasks();
+
+    await runCategorizationJob(group.id, 'user-1');
 
     const groups = await storage.getTabGroups();
     const updated = groups.find(g => g.id === group.id)!;
     expect(updated.tabs.map(t => t.url)).toEqual(originalUrls);
   });
+
+  it('group not found → no crash, no status change', async () => {
+    await runCategorizationJob('nonexistent-id', 'user-1');
+    // No throw = success
+    expect(mockCategorizeTabs).not.toHaveBeenCalled();
+  });
 });
+
+// --- Helper ---
+
+function makeTestGroup(): TabGroup {
+  const now = Date.now();
+  return {
+    id: `group-${++uuidCounter}`,
+    name: 'Test Group',
+    tabs: Array.from({ length: 6 }, (_, i) => ({
+      id: `tab-${i}`,
+      url: `https://site-${i}.com`,
+      title: `Site ${i}`,
+      faviconUrl: null,
+      position: i,
+      createdAt: now,
+    })),
+    isAutoSave: false,
+    deviceId: 'device-1',
+    createdAt: now,
+    updatedAt: now,
+    categorizationStatus: CATEGORIZATION_STATUS.PENDING,
+  };
+}

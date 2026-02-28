@@ -25,6 +25,7 @@ beforeEach(() => {
   globalThis.chrome.runtime = {
     getPlatformInfo: vi.fn(async () => ({ os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' })),
     getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
   };
 
   mockChromeTabs.query.mockReset();

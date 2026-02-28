@@ -18,6 +18,7 @@ interface TabGroupCardProps {
   onRenameGroup: (groupId: string, newName: string) => void;
   isSelected?: boolean;
   onToggleSelect?: (groupId: string) => void;
+  duplicateCount?: number;
 }
 
 export function TabGroupCard({
@@ -29,6 +30,7 @@ export function TabGroupCard({
   onRenameGroup,
   isSelected = false,
   onToggleSelect,
+  duplicateCount = 0,
 }: TabGroupCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -177,6 +179,23 @@ export function TabGroupCard({
             </>
           )}
         </div>
+
+        {/* Duplicate badge */}
+        {duplicateCount > 0 && (
+          <span
+            className="text-[10px] font-semibold shrink-0 rounded-full whitespace-nowrap"
+            style={{
+              background: 'var(--warning-soft)',
+              border: '1px solid var(--warning-border)',
+              color: 'var(--warning-text)',
+              padding: '2px 7px',
+              letterSpacing: '0.3px',
+            }}
+            title={`${duplicateCount} duplicate ${duplicateCount === 1 ? 'URL' : 'URLs'} found in other groups`}
+          >
+            ⚠️ {duplicateCount} {duplicateCount === 1 ? 'dupe' : 'dupes'}
+          </span>
+        )}
 
         {/* Auto badge */}
         {group.isAutoSave && (

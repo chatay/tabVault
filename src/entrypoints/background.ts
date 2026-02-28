@@ -1,6 +1,8 @@
 import { getOrCreateDeviceId } from '../lib/device';
 import { StorageService } from '../lib/storage';
-import { TabService } from '../lib/tabs';
+import { TabService, runCategorizationJob } from '../lib/tabs';
+import { getSession } from '../lib/auth';
+import { dlog } from '../lib/debug-log';
 import {
   ALARM_AUTO_SAVE,
   ALARM_SYNC_RETRY,
@@ -15,6 +17,34 @@ export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(async () => {
     await getOrCreateDeviceId();
     await createAlarms();
+  });
+
+  // --- Categorization job handler (delegated from popup/tabs page) ---
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (
+      typeof message === 'object' &&
+      message !== null &&
+      message.type === 'tabvault:run-categorization' &&
+      message.groupId
+    ) {
+      // Run in background — survives popup closing
+      (async () => {
+        try {
+          const session = await getSession().catch(() => null);
+          if (!session?.user?.id) {
+            await dlog.warn('Categorization skipped: no session');
+            return;
+          }
+          await dlog.info('Background: starting categorization for group', message.groupId);
+          await runCategorizationJob(message.groupId, session.user.id);
+        } catch (e) {
+          await dlog.error('Background: categorization crashed', e);
+        }
+      })();
+      // Return true to keep the message channel open (async response)
+      sendResponse({ ok: true });
+    }
+    return undefined;
   });
 
   // --- Re-create alarms on browser startup (belt-and-suspenders) ---

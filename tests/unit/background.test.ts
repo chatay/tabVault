@@ -40,7 +40,9 @@ const mockChromeTabs = {
 const mockChromeRuntime = {
   onInstalled: { addListener: vi.fn() },
   onStartup: { addListener: vi.fn() },
+  onMessage: { addListener: vi.fn() },
   getPlatformInfo: vi.fn(async () => ({ os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' })),
+  sendMessage: vi.fn().mockResolvedValue(undefined),
 };
 
 // Attach mocks to globalThis.chrome before importing modules

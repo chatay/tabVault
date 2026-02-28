@@ -40,7 +40,7 @@ beforeEach(() => {
 
 /** Helper: build a successful edge function response */
 function claudeResponse(payload: {
-  subGroups: { name: string; tabIds: string[] }[];
+  subGroups: { name: string; tabIndexes: number[] }[];
   summary: string;
   tags: string[];
 }) {
@@ -130,7 +130,7 @@ describe('categorizeTabs', () => {
     const tabs = makeTabs(5);
     mockFunctionsInvoke.mockResolvedValueOnce(
       claudeResponse({
-        subGroups: [{ name: 'General', tabIds: tabs.map(t => t.id) }],
+        subGroups: [{ name: 'General', tabIndexes: [1, 2, 3, 4, 5] }],
         summary: 'Five general tabs',
         tags: ['general'],
       }),
@@ -151,12 +151,13 @@ describe('categorizeTabs', () => {
 
   it('returns partial results when one batch fails and one succeeds', async () => {
     const tabs = makeTabs(51);
-    const batch1Ids = tabs.slice(0, 50).map(t => t.id);
+    // 1-based indexes for batch 1 (50 tabs)
+    const batch1Indexes = Array.from({ length: 50 }, (_, i) => i + 1);
 
     mockFunctionsInvoke
       .mockResolvedValueOnce(
         claudeResponse({
-          subGroups: [{ name: 'Batch1', tabIds: batch1Ids }],
+          subGroups: [{ name: 'Batch1', tabIndexes: batch1Indexes }],
           summary: 'First batch',
           tags: ['batch1'],
         }),
@@ -175,8 +176,8 @@ describe('categorizeTabs', () => {
     mockFunctionsInvoke.mockResolvedValueOnce(
       claudeResponse({
         subGroups: [
-          { name: 'Group A', tabIds: tabs.slice(0, 6).map(t => t.id) },
-          { name: 'Group B', tabIds: tabs.slice(6).map(t => t.id) },
+          { name: 'Group A', tabIndexes: [1, 2, 3, 4, 5, 6] },
+          { name: 'Group B', tabIndexes: [7, 8, 9, 10] },
         ],
         summary: 'Ten tabs in two groups',
         tags: ['misc'],
@@ -194,7 +195,7 @@ describe('categorizeTabs', () => {
     const tabs = makeTabs(5);
     mockFunctionsInvoke.mockResolvedValueOnce(
       claudeResponse({
-        subGroups: [{ name: 'All', tabIds: tabs.map(t => t.id) }],
+        subGroups: [{ name: 'All', tabIndexes: [1, 2, 3, 4, 5] }],
         summary: 'A bunch of tabs',
         tags: ['test'],
       }),
@@ -208,7 +209,7 @@ describe('categorizeTabs', () => {
     const tabs = makeTabs(5);
     mockFunctionsInvoke.mockResolvedValueOnce(
       claudeResponse({
-        subGroups: [{ name: 'All', tabIds: tabs.map(t => t.id) }],
+        subGroups: [{ name: 'All', tabIndexes: [1, 2, 3, 4, 5] }],
         summary: 'Tabs',
         tags: ['ai', 'work'],
       }),
@@ -220,20 +221,19 @@ describe('categorizeTabs', () => {
 
   it('makes 2 parallel Claude calls for 51 tabs', async () => {
     const tabs = makeTabs(51);
-    const batch1Ids = tabs.slice(0, 50).map(t => t.id);
-    const batch2Ids = tabs.slice(50).map(t => t.id);
+    const batch1Indexes = Array.from({ length: 50 }, (_, i) => i + 1);
 
     mockFunctionsInvoke
       .mockResolvedValueOnce(
         claudeResponse({
-          subGroups: [{ name: 'Batch1', tabIds: batch1Ids }],
+          subGroups: [{ name: 'Batch1', tabIndexes: batch1Indexes }],
           summary: 'First',
           tags: ['a'],
         }),
       )
       .mockResolvedValueOnce(
         claudeResponse({
-          subGroups: [{ name: 'Batch2', tabIds: batch2Ids }],
+          subGroups: [{ name: 'Batch2', tabIndexes: [1] }],
           summary: 'Second',
           tags: ['b'],
         }),

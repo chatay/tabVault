@@ -50,6 +50,7 @@ export const CATEGORIZATION_LIMITS = {
   MIN_TABS: 5,
   BATCH_SIZE: 50,
   MAX_TITLE_LENGTH: 80,
+  MAX_TOKENS: 4096,
 } as const;
 
 // === Abuse Detection ===
@@ -63,6 +64,12 @@ export const ABUSE_THRESHOLDS = {
   FLAG_AT: 3,
   BLOCK_AT: 5,
   WINDOW_MS: 2 * 60 * 1000,
+} as const;
+
+// === Duplicate Detection ===
+export const DUPLICATE_DETECTION = {
+  /** Minimum number of groups required to run duplicate detection */
+  MIN_GROUPS: 2,
 } as const;
 
 // === UI ===

@@ -1,11 +1,12 @@
-import type { SavedTab, TabGroup, SaveResult, SubGroup, CategorizationStatus } from './types';
-import type { StorageService } from './storage';
+import type { SavedTab, TabGroup, SaveResult, CategorizationStatus } from './types';
+import { StorageService } from './storage';
 import { getSession, getProfile } from './auth';
 import { getSupabase } from './supabase';
 import { SyncEngine } from './sync';
 import { SyncQueue } from './sync-queue';
 import { categorizeTabs } from './categorize';
 import { checkForAbuse } from './abuse';
+import { dlog } from './debug-log';
 import {
   CLOUD_FREE_TAB_LIMIT,
   SubscriptionTier,
@@ -125,93 +126,14 @@ export class TabService {
     group.categorizationStatus = CATEGORIZATION_STATUS.PENDING;
     await this.storage.saveTabGroup(group);
 
-    // Fire and forget — no await, user never waits for this
-    const catSession = await getSession().catch(() => null);
-    if (catSession?.user?.id) {
-      this.runCategorizationJob(group, catSession.user.id);
-    }
+    // Delegate categorization to the background service worker so it survives
+    // popup closing. The background listener picks this up and runs the job.
+    chrome.runtime.sendMessage({
+      type: 'tabvault:run-categorization',
+      groupId: group.id,
+    }).catch(() => {});
 
     return { success: true, group };
-  }
-
-  private async runCategorizationJob(
-    group: TabGroup,
-    userId: string,
-  ): Promise<void> {
-    try {
-      const abuseResult = await checkForAbuse(userId);
-
-      if (abuseResult === ABUSE_CHECK_RESULT.BLOCKED) {
-        await this.updateGroupCategorizationStatus(
-          group.id,
-          CATEGORIZATION_STATUS.FAILED,
-        );
-        return;
-      }
-
-      await this.updateGroupCategorizationStatus(
-        group.id,
-        CATEGORIZATION_STATUS.PROCESSING,
-      );
-
-      const result = await categorizeTabs(group.tabs);
-
-      if (!result) {
-        await this.updateGroupCategorizationStatus(
-          group.id,
-          CATEGORIZATION_STATUS.FAILED,
-        );
-        return;
-      }
-
-      await this.updateGroupWithCategories(group.id, result);
-    } catch {
-      await this.updateGroupCategorizationStatus(
-        group.id,
-        CATEGORIZATION_STATUS.FAILED,
-      );
-    }
-  }
-
-  private async updateGroupCategorizationStatus(
-    groupId: string,
-    status: CategorizationStatus,
-  ): Promise<void> {
-    const groups = await this.storage.getTabGroups();
-    const group = groups.find(g => g.id === groupId);
-    if (!group) return;
-
-    group.categorizationStatus = status;
-    group.updatedAt = Date.now();
-    await this.storage.saveTabGroup(group);
-  }
-
-  private async updateGroupWithCategories(
-    groupId: string,
-    result: { subGroups: SubGroup[]; summary: string; tags: string[] },
-  ): Promise<void> {
-    const groups = await this.storage.getTabGroups();
-    const group = groups.find(g => g.id === groupId);
-    if (!group) return;
-
-    group.subGroups = result.subGroups;
-    group.summary = result.summary;
-    group.tags = result.tags;
-    group.categorizationStatus = CATEGORIZATION_STATUS.DONE;
-    group.updatedAt = Date.now();
-
-    await this.storage.saveTabGroup(group);
-
-    // Push categorization results to cloud so other devices see them
-    try {
-      const session = await getSession();
-      if (session) {
-        const engine = new SyncEngine(this.storage, new SyncQueue());
-        await engine.pushGroup(group).catch(() => {});
-      }
-    } catch {
-      // Not authenticated or no Supabase — skip
-    }
   }
 
   async renameGroup(groupId: string, newName: string): Promise<void> {
@@ -326,5 +248,80 @@ export class TabService {
     if (removeAfterRestore) {
       await this.deleteGroup(groupId);
     }
+  }
+}
+
+// --- Standalone categorization job (runs in background service worker) ---
+
+export async function runCategorizationJob(
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  const storage = new StorageService();
+
+  async function setStatus(status: CategorizationStatus) {
+    const groups = await storage.getTabGroups();
+    const g = groups.find(g => g.id === groupId);
+    if (!g) return;
+    g.categorizationStatus = status;
+    g.updatedAt = Date.now();
+    await storage.saveTabGroup(g);
+  }
+
+  try {
+    const groups = await storage.getTabGroups();
+    const group = groups.find(g => g.id === groupId);
+    if (!group) {
+      await dlog.warn('Categorization: group not found', groupId);
+      return;
+    }
+
+    const abuseResult = await checkForAbuse(userId);
+    if (abuseResult === ABUSE_CHECK_RESULT.BLOCKED) {
+      await dlog.warn('Categorization: abuse check blocked', groupId);
+      await setStatus(CATEGORIZATION_STATUS.FAILED);
+      return;
+    }
+
+    await setStatus(CATEGORIZATION_STATUS.PROCESSING);
+
+    const result = await categorizeTabs(group.tabs);
+
+    if (!result) {
+      await dlog.warn('Categorization returned null for group', groupId);
+      await setStatus(CATEGORIZATION_STATUS.FAILED);
+      return;
+    }
+
+    await dlog.info('Categorization done for group', groupId, '—', result.subGroups.length, 'sub-groups');
+
+    // Re-read group (it may have been updated while we waited for AI)
+    const freshGroups = await storage.getTabGroups();
+    const freshGroup = freshGroups.find(g => g.id === groupId);
+    if (!freshGroup) return;
+
+    freshGroup.subGroups = result.subGroups;
+    freshGroup.summary = result.summary;
+    freshGroup.tags = result.tags;
+    freshGroup.categorizationStatus = CATEGORIZATION_STATUS.DONE;
+    freshGroup.updatedAt = Date.now();
+    await storage.saveTabGroup(freshGroup);
+
+    // Push categorization results to cloud
+    try {
+      const session = await getSession();
+      if (session) {
+        const engine = new SyncEngine(storage, new SyncQueue());
+        await dlog.info('Pushing AI fields to cloud for group', groupId);
+        await engine.pushGroup(freshGroup);
+        await dlog.info('Push succeeded for group', groupId);
+        chrome.runtime.sendMessage({ type: 'tabvault:data-changed' }).catch(() => {});
+      }
+    } catch (e) {
+      await dlog.error('Push AI fields failed for group', groupId, e);
+    }
+  } catch (e) {
+    await dlog.error('Categorization job failed for group', groupId, e);
+    await setStatus(CATEGORIZATION_STATUS.FAILED);
   }
 }

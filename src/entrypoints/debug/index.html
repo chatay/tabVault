@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TabVault Debug Log</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; font-size: 13px; }
+    h1 { font-size: 16px; color: #a78bfa; margin-bottom: 8px; }
+    .controls { margin-bottom: 12px; display: flex; gap: 8px; }
+    button { background: #2d2d44; color: #e0e0e0; border: 1px solid #444; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    button:hover { background: #3d3d54; }
+    #log { display: flex; flex-direction: column; gap: 2px; }
+    .entry { padding: 4px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+    .entry .ts { color: #888; margin-right: 8px; }
+    .entry.info { background: #1e293b; }
+    .entry.warn { background: #2d2a1e; color: #fbbf24; }
+    .entry.error { background: #2d1e1e; color: #f87171; }
+    .empty { color: #666; padding: 40px; text-align: center; }
+    .auto { color: #888; font-size: 11px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h1>TabVault Debug Log</h1>
+  <p class="auto">Auto-refreshes every 2s</p>
+  <div class="controls">
+    <button id="refresh">Refresh now</button>
+    <button id="clear">Clear log</button>
+    <button id="copy">Copy to clipboard</button>
+  </div>
+  <div id="log"></div>
+  <script src="./main.ts" type="module"></script>
+</body>
+</html>

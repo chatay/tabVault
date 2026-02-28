@@ -51,6 +51,7 @@ function renderPanel(overrides: {
   profile?: UserProfile | null;
   onUpdate?: (partial: Partial<UserSettings>) => void;
   onBack?: () => void;
+  onProfileChange?: (profile: UserProfile) => void;
   onSignOut?: () => void;
   onSignIn?: () => void;
 } = {}) {
@@ -59,6 +60,7 @@ function renderPanel(overrides: {
     onUpdate: overrides.onUpdate ?? vi.fn(),
     onBack: overrides.onBack ?? vi.fn(),
     profile: overrides.profile ?? null,
+    onProfileChange: overrides.onProfileChange ?? vi.fn(),
     onSignOut: overrides.onSignOut ?? vi.fn(),
     onSignIn: overrides.onSignIn ?? vi.fn(),
   };
