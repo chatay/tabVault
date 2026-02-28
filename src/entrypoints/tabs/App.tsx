@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTabVault } from '../../hooks/useTabVault';
 import { getProfile, signOut } from '../../lib/auth';
-import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT } from '../../lib/constants';
-import type { UserSettings } from '../../lib/types';
+import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT, NAV_TAB } from '../../lib/constants';
+import type { NavTab } from '../../lib/constants';
 import { TabGroupCard } from '../../components/TabGroupCard';
 import { SearchBar } from '../../components/SearchBar';
 import { SearchResultItem } from '../../components/SearchResultItem';
 import { SettingsPanel } from '../../components/SettingsPanel';
-import { findDuplicates, getDuplicateCountForGroup } from '../../lib/duplicates';
+import { SmartSearch } from '../../components/SmartSearch';
+import { computeGroupDuplicateDetails } from '../../lib/duplicates';
 
 export default function App() {
   const {
@@ -32,6 +33,7 @@ export default function App() {
 
   // --- Tabs-specific state ---
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeNav, setActiveNav] = useState<NavTab>(NAV_TAB.MY_TABS);
   const [showSettings, setShowSettings] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('settings') === '1';
@@ -83,7 +85,7 @@ export default function App() {
   const totalTabs = groups.reduce((sum, g) => sum + g.tabs.length, 0);
 
   // Duplicate detection — recomputed only when groups change
-  const duplicateReport = useMemo(() => findDuplicates(groups), [groups]);
+  const groupDuplicateDetails = useMemo(() => computeGroupDuplicateDetails(groups), [groups]);
 
   // Settings handlers
   function handleSettingsBack() {
@@ -119,6 +121,14 @@ export default function App() {
     await updateSettings({ darkMode: newDarkMode });
   }
 
+  function handleNavChange(tab: NavTab) {
+    setActiveNav(tab);
+    if (tab !== NAV_TAB.MY_TABS) {
+      setSearchQuery('');
+      if (isSelectMode) handleCancelSelect();
+    }
+  }
+
   const isSearching = searchQuery.trim().length > 0;
 
   const showBanner = !showSettings && (
@@ -127,8 +137,8 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen flex items-start justify-center" style={{ background: 'var(--bg)', padding: `32px 20px ${showBanner ? '100px' : '60px'}` }}>
-      <div className="w-full flex flex-col gap-[14px]" style={{ maxWidth: '760px' }}>
+    <div className={`app-container min-h-screen flex items-start justify-center ${showBanner ? 'with-banner' : ''}`}>
+      <div className="app-inner w-full flex flex-col gap-[14px]">
 
         {/* Settings view */}
         {showSettings ? (
@@ -144,71 +154,38 @@ export default function App() {
         ) : (
           <>
             {/* ─── HEADER ─── */}
-            <div
-              className="rounded-[14px] flex items-center justify-between"
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                boxShadow: 'var(--shadow-sm)',
-                padding: '14px 18px',
-                transition: 'background 0.25s, border-color 0.25s',
-              }}
-            >
+            <div className="header-card rounded-[14px] flex items-center justify-between">
               <div className="flex items-center gap-[10px]">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-[15px]"
-                  style={{
-                    background: 'linear-gradient(135deg, #4F6EF7, #7C3AED)',
-                    boxShadow: '0 2px 8px rgba(79,110,247,0.35)',
-                  }}
-                >
+                <div className="header-logo w-8 h-8 rounded-lg flex items-center justify-center text-[15px]">
                   🔒
                 </div>
-                <span className="text-[15px] font-semibold" style={{ letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
+                <span className="header-title text-[15px] font-semibold">
                   TabVault
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                <span className="header-stats text-[12px]">
                   {groups.length} {groups.length === 1 ? 'group' : 'groups'} · {totalTabs} {totalTabs === 1 ? 'tab' : 'tabs'}
                 </span>
 
                 {/* Status badge */}
                 {profile === null ? (
                   <button
-                    className="flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
-                    style={{
-                      background: 'var(--warning-soft)',
-                      border: '1px solid var(--warning-border)',
-                      padding: '4px 10px',
-                      color: 'var(--warning-text)',
-                    }}
+                    className="badge-local flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
                     onClick={() => setShowSettings(true)}
                     title="Your tabs are local only — sign in to protect them"
                   >
-                    <span
-                      className="w-[6px] h-[6px] rounded-full shrink-0"
-                      style={{ background: 'var(--warning)', animation: 'pulse-dot 2s infinite' }}
-                    />
+                    <span className="badge-local-dot w-[6px] h-[6px] rounded-full shrink-0" />
                     Local only
                   </button>
                 ) : (
                   <button
-                    className="flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
-                    style={{
-                      background: 'var(--green-soft)',
-                      border: '1px solid var(--green)',
-                      padding: '4px 10px',
-                      color: 'var(--green)',
-                    }}
+                    className="badge-cloud flex items-center gap-[5px] rounded-full text-[11px] font-medium cursor-pointer"
                     onClick={() => setShowSettings(true)}
                     title="Cloud sync active"
                   >
-                    <span
-                      className="w-[6px] h-[6px] rounded-full shrink-0"
-                      style={{ background: 'var(--green)' }}
-                    />
+                    <span className="badge-cloud-dot w-[6px] h-[6px] rounded-full shrink-0" />
                     {profile.tier === SubscriptionTier.CLOUD_FREE
                       ? `Cloud \u00b7 ${profile.tabCount} of ${CLOUD_FREE_TAB_LIMIT} tabs`
                       : 'Cloud \u00b7 Pro'}
@@ -218,23 +195,7 @@ export default function App() {
                 {/* Select button */}
                 {!isSelectMode && groups.length > 0 && (
                   <button
-                    className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
-                    style={{
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface)',
-                      color: 'var(--text-secondary)',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--surface-2)';
-                      e.currentTarget.style.borderColor = 'var(--border-strong)';
-                      e.currentTarget.style.color = 'var(--text-primary)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--surface)';
-                      e.currentTarget.style.borderColor = 'var(--border)';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }}
+                    className="header-icon-btn w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
                     onClick={() => setIsSelectMode(true)}
                     title="Select"
                   >
@@ -244,20 +205,7 @@ export default function App() {
 
                 {/* Dark mode toggle */}
                 <button
-                  className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
-                  style={{
-                    border: '1px solid var(--border)',
-                    background: 'var(--theme-toggle-bg)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border-strong)';
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
+                  className="theme-toggle-btn w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
                   onClick={handleToggleDarkMode}
                   title="Toggle dark mode"
                 >
@@ -266,23 +214,7 @@ export default function App() {
 
                 {/* Settings */}
                 <button
-                  className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
-                  style={{
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface)',
-                    color: 'var(--text-secondary)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--surface-2)';
-                    e.currentTarget.style.borderColor = 'var(--border-strong)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'var(--surface)';
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }}
+                  className="header-icon-btn w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-[15px]"
                   onClick={() => setShowSettings(true)}
                   title="Settings"
                 >
@@ -291,31 +223,38 @@ export default function App() {
               </div>
             </div>
 
-            {/* ─── SELECTION TOOLBAR ─── */}
-            {isSelectMode && !isSearching && (
-              <div
-                className="rounded-[14px] flex items-center justify-between"
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  padding: '10px 16px',
-                }}
+            {/* ─── NAV TABS ─── */}
+            <div className="nav-tabs rounded-[12px]">
+              <button
+                className={`nav-tab${activeNav === NAV_TAB.MY_TABS ? ' active' : ''}`}
+                onClick={() => handleNavChange(NAV_TAB.MY_TABS)}
               >
-                <span className="text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                My Tabs
+              </button>
+              <button
+                className={`nav-tab${activeNav === NAV_TAB.SMART_SEARCH ? ' active' : ''}`}
+                onClick={() => handleNavChange(NAV_TAB.SMART_SEARCH)}
+              >
+                ✦ Smart Search
+              </button>
+            </div>
+
+            {/* ─── SELECTION TOOLBAR ─── */}
+            {activeNav === NAV_TAB.MY_TABS && isSelectMode && !isSearching && (
+              <div className="selection-toolbar rounded-[14px] flex items-center justify-between">
+                <span className="selection-count text-[13px] font-medium">
                   {selectedIds.size} selected
                 </span>
                 <div className="flex items-center gap-3">
                   <button
-                    className="text-[13px] font-medium min-h-[44px] cursor-pointer"
-                    style={{ color: selectedIds.size > 0 ? 'var(--red)' : 'var(--text-muted)', background: 'none', border: 'none' }}
+                    className={`toolbar-btn text-[13px] font-medium min-h-[44px] cursor-pointer ${selectedIds.size > 0 ? 'toolbar-delete-active' : 'toolbar-delete-disabled'}`}
                     onClick={handleDeleteSelected}
                     disabled={selectedIds.size === 0}
                   >
                     Delete
                   </button>
                   <button
-                    className="text-[13px] min-h-[44px] cursor-pointer"
-                    style={{ color: 'var(--text-secondary)', background: 'none', border: 'none' }}
+                    className="toolbar-cancel-btn text-[13px] min-h-[44px] cursor-pointer"
                     onClick={handleCancelSelect}
                   >
                     Cancel
@@ -324,128 +263,120 @@ export default function App() {
               </div>
             )}
 
-            {/* ─── SEARCH BAR ─── */}
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              resultCount={searchResults.length}
-              isSearching={isSearching}
-            />
+            {/* ─── MY TABS VIEW ─── */}
+            {activeNav === NAV_TAB.MY_TABS && (
+              <>
+                {/* ─── SEARCH BAR ─── */}
+                <SearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  resultCount={searchResults.length}
+                  isSearching={isSearching}
+                />
 
-            {/* ─── FLAT SEARCH RESULTS ─── */}
-            {isSearching && searchResults.length > 0 && (
-              <div className="flex flex-col gap-[6px]">
-                {searchResults.map(({ tab, groupName, groupDate }) => (
-                  <SearchResultItem
-                    key={tab.id}
-                    tab={tab}
-                    groupName={groupName}
-                    groupDate={groupDate}
-                    query={searchQuery}
-                    onOpen={handleOpenTab}
-                  />
-                ))}
-              </div>
+                {/* ─── FLAT SEARCH RESULTS ─── */}
+                {isSearching && searchResults.length > 0 && (
+                  <div className="flex flex-col gap-[6px]">
+                    {searchResults.map(({ tab, groupName, groupDate }) => (
+                      <SearchResultItem
+                        key={tab.id}
+                        tab={tab}
+                        groupName={groupName}
+                        groupDate={groupDate}
+                        query={searchQuery}
+                        onOpen={handleOpenTab}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* ─── NO SEARCH RESULTS ─── */}
+                {isSearching && searchResults.length === 0 && (
+                  <div className="empty-state-card rounded-[14px] text-center">
+                    <div className="text-[34px] mb-3 opacity-45">🔍</div>
+                    <div className="empty-state-title text-[15px] font-semibold mb-[6px]">
+                      No tabs found for &quot;{searchQuery.trim()}&quot;
+                    </div>
+                    <div className="empty-state-text text-[13px]">
+                      Try a different search term
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── MY SAVED GROUPS ─── */}
+                {!isSearching && manualGroups.length > 0 && (
+                  <div className="flex flex-col gap-[10px]">
+                    <div className="flex items-center gap-[10px] px-[2px]">
+                      <span className="section-label text-[10px] font-bold uppercase whitespace-nowrap">
+                        My Saved Groups
+                      </span>
+                      <div className="section-divider flex-1 h-px" />
+                    </div>
+                    {manualGroups.map((group) => (
+                      <TabGroupCard
+                        key={group.id}
+                        group={group}
+                        onOpenTab={handleOpenTab}
+                        onOpenGroup={handleOpenGroup}
+                        onDeleteTab={handleDeleteTab}
+                        onDeleteGroup={handleDeleteGroup}
+                        onRenameGroup={handleRenameGroup}
+                        isSelected={selectedIds.has(group.id)}
+                        onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
+                        duplicateInfo={groupDuplicateDetails.get(group.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* ─── AUTO-SAVED ─── */}
+                {!isSearching && autoGroups.length > 0 && (
+                  <div className="flex flex-col gap-[10px] mt-1">
+                    <div className="flex items-center gap-[10px] px-[2px]">
+                      <span className="section-label text-[10px] font-bold uppercase whitespace-nowrap">
+                        Auto-saved
+                      </span>
+                      <div className="section-divider flex-1 h-px" />
+                    </div>
+                    {autoGroups.map((group) => (
+                      <TabGroupCard
+                        key={group.id}
+                        group={group}
+                        onOpenTab={handleOpenTab}
+                        onOpenGroup={handleOpenGroup}
+                        onDeleteTab={handleDeleteTab}
+                        onDeleteGroup={handleDeleteGroup}
+                        onRenameGroup={handleRenameGroup}
+                        isSelected={selectedIds.has(group.id)}
+                        onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
+                        duplicateInfo={groupDuplicateDetails.get(group.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* ─── EMPTY STATE ─── */}
+                {!isSearching && groups.length === 0 && (
+                  <div className="empty-state-card rounded-[14px] text-center">
+                    <div className="text-[34px] mb-3 opacity-45">📁</div>
+                    <div className="empty-state-title text-[15px] font-semibold mb-[6px]">
+                      No saved tabs yet
+                    </div>
+                    <div className="empty-state-text text-[13px]">
+                      Click the TabVault icon in your toolbar and hit &quot;Save Tabs&quot; to get started.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            {/* ─── NO SEARCH RESULTS ─── */}
-            {isSearching && searchResults.length === 0 && (
-              <div
-                className="rounded-[14px] text-center"
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  padding: '52px 24px',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <div className="text-[34px] mb-3 opacity-45">🔍</div>
-                <div className="text-[15px] font-semibold mb-[6px]" style={{ color: 'var(--text-primary)' }}>
-                  No tabs found for &quot;{searchQuery.trim()}&quot;
-                </div>
-                <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  Try a different search term
-                </div>
-              </div>
-            )}
-
-            {/* ─── MY SAVED GROUPS ─── */}
-            {!isSearching && manualGroups.length > 0 && (
-              <div className="flex flex-col gap-[10px]">
-                <div className="flex items-center gap-[10px] px-[2px]">
-                  <span
-                    className="text-[10px] font-bold uppercase whitespace-nowrap"
-                    style={{ color: 'var(--text-muted)', letterSpacing: '1px' }}
-                  >
-                    My Saved Groups
-                  </span>
-                  <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-                </div>
-                {manualGroups.map((group) => (
-                  <TabGroupCard
-                    key={group.id}
-                    group={group}
-                    onOpenTab={handleOpenTab}
-                    onOpenGroup={handleOpenGroup}
-                    onDeleteTab={handleDeleteTab}
-                    onDeleteGroup={handleDeleteGroup}
-                    onRenameGroup={handleRenameGroup}
-                    isSelected={selectedIds.has(group.id)}
-                    onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
-                    duplicateCount={getDuplicateCountForGroup(duplicateReport, group.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* ─── AUTO-SAVED ─── */}
-            {!isSearching && autoGroups.length > 0 && (
-              <div className="flex flex-col gap-[10px] mt-1">
-                <div className="flex items-center gap-[10px] px-[2px]">
-                  <span
-                    className="text-[10px] font-bold uppercase whitespace-nowrap"
-                    style={{ color: 'var(--text-muted)', letterSpacing: '1px' }}
-                  >
-                    Auto-saved
-                  </span>
-                  <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-                </div>
-                {autoGroups.map((group) => (
-                  <TabGroupCard
-                    key={group.id}
-                    group={group}
-                    onOpenTab={handleOpenTab}
-                    onOpenGroup={handleOpenGroup}
-                    onDeleteTab={handleDeleteTab}
-                    onDeleteGroup={handleDeleteGroup}
-                    onRenameGroup={handleRenameGroup}
-                    isSelected={selectedIds.has(group.id)}
-                    onToggleSelect={isSelectMode ? handleToggleSelect : undefined}
-                    duplicateCount={getDuplicateCountForGroup(duplicateReport, group.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* ─── EMPTY STATE ─── */}
-            {!isSearching && groups.length === 0 && (
-              <div
-                className="rounded-[14px] text-center"
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  padding: '52px 24px',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <div className="text-[34px] mb-3 opacity-45">📁</div>
-                <div className="text-[15px] font-semibold mb-[6px]" style={{ color: 'var(--text-primary)' }}>
-                  No saved tabs yet
-                </div>
-                <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  Click the TabVault icon in your toolbar and hit &quot;Save Tabs&quot; to get started.
-                </div>
-              </div>
+            {/* ─── SMART SEARCH VIEW ─── */}
+            {activeNav === NAV_TAB.SMART_SEARCH && (
+              <SmartSearch
+                groups={groups}
+                isAuthenticated={profile !== null}
+                onOpenTab={handleOpenTab}
+              />
             )}
           </>
         )}
@@ -453,33 +384,14 @@ export default function App() {
 
       {/* ─── WARNING BANNER (local only) ─── */}
       {profile === null && !showSettings && groups.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center" style={{ padding: '0 20px 16px' }}>
-          <div
-            className="w-full rounded-xl flex items-center gap-3"
-            style={{
-              maxWidth: '760px',
-              background: 'var(--warning-soft)',
-              border: '1px solid var(--warning-border)',
-              padding: '13px 16px',
-              color: 'var(--warning-text)',
-              fontSize: '13px',
-            }}
-          >
+        <div className="warning-banner-wrapper fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+          <div className="warning-banner w-full rounded-xl flex items-center gap-3">
             <span className="text-[18px] shrink-0">⚠️</span>
-            <div className="flex-1" style={{ lineHeight: '1.5' }}>
+            <div className="warning-banner-text flex-1">
               Your tabs are saved on this device only. A Chrome reinstall or PC reset will erase everything permanently.
             </div>
             <button
-              className="shrink-0 whitespace-nowrap rounded-full text-white text-[12px] font-semibold cursor-pointer"
-              style={{
-                background: 'var(--accent)',
-                padding: '6px 14px',
-                border: 'none',
-                fontFamily: "'DM Sans', sans-serif",
-                transition: 'background 0.15s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
+              className="banner-cta shrink-0 whitespace-nowrap rounded-full text-white text-[12px] font-semibold cursor-pointer"
               onClick={() => setShowSettings(true)}
             >
               Protect free →
@@ -490,33 +402,14 @@ export default function App() {
 
       {/* ─── USAGE BANNER (cloud free tier) ─── */}
       {profile?.tier === SubscriptionTier.CLOUD_FREE && !showSettings && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center" style={{ padding: '0 20px 16px' }}>
-          <div
-            className="w-full rounded-xl flex items-center gap-3"
-            style={{
-              maxWidth: '760px',
-              background: 'var(--accent-soft)',
-              border: '1px solid var(--accent)',
-              padding: '13px 16px',
-              color: 'var(--accent)',
-              fontSize: '13px',
-            }}
-          >
+        <div className="warning-banner-wrapper fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+          <div className="usage-banner w-full rounded-xl flex items-center gap-3">
             <span className="text-[18px] shrink-0">☁️</span>
-            <div className="flex-1" style={{ lineHeight: '1.5' }}>
+            <div className="warning-banner-text flex-1">
               You are using {profile.tabCount} of {CLOUD_FREE_TAB_LIMIT} free tabs.
             </div>
             <button
-              className="shrink-0 whitespace-nowrap rounded-full text-white text-[12px] font-semibold cursor-pointer"
-              style={{
-                background: 'var(--accent)',
-                padding: '6px 14px',
-                border: 'none',
-                fontFamily: "'DM Sans', sans-serif",
-                transition: 'background 0.15s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
+              className="banner-cta shrink-0 whitespace-nowrap rounded-full text-white text-[12px] font-semibold cursor-pointer"
               onClick={() => setShowSettings(true)}
             >
               Upgrade →

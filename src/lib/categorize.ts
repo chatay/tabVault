@@ -63,7 +63,7 @@ Reply ONLY with this JSON structure, no extra text:
     const { data, error } = await supabase.functions.invoke('categorize-tabs', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: {
-        model: 'gpt-4.1-nano',
+        model: CATEGORIZATION_LIMITS.MODEL,
         max_tokens: CATEGORIZATION_LIMITS.MAX_TOKENS,
         messages: [{ role: 'user', content: prompt }],
       },
@@ -87,8 +87,25 @@ Reply ONLY with this JSON structure, no extra text:
       return null;
     }
 
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    // Extract JSON block from any surrounding prose/markdown
+    const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      await dlog.error('categorize: no JSON object found in response. text:', text.slice(0, 300));
+      return null;
+    }
+
+    // Sanitize malformed tabIndexes arrays — model sometimes writes
+    // natural language inside the array, e.g. [1, 2, Please add more].
+    // Extract only the integers so the rest of the JSON stays valid.
+    const sanitized = jsonMatch[0].replace(
+      /"tabIndexes"\s*:\s*\[([^\]]*)\]/g,
+      (_, content: string) => {
+        const nums = (content.match(/\d+/g) ?? []).join(', ');
+        return `"tabIndexes": [${nums}]`;
+      },
+    );
+
+    const parsed = JSON.parse(sanitized);
     await dlog.info('categorize: parsed', parsed.subGroups?.length, 'sub-groups');
     return parsed;
   } catch (err: unknown) {

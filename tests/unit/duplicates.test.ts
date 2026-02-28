@@ -3,6 +3,7 @@ import {
   normalizeUrl,
   findDuplicates,
   getDuplicateCountForGroup,
+  computeGroupDuplicateDetails,
 } from '@/lib/duplicates';
 import type { TabGroup } from '@/lib/types';
 
@@ -105,13 +106,13 @@ describe('findDuplicates', () => {
     expect(report.totalDuplicateCount).toBe(1);
   });
 
-  it('same URL twice in same group → NOT counted as duplicate', () => {
+  it('same URL twice in same group → counted as duplicate', () => {
     const report = findDuplicates([
       makeGroup('g1', ['https://github.com', 'https://github.com']),
       makeGroup('g2', ['https://google.com']),
     ]);
-    expect(report.duplicates).toEqual([]);
-    expect(report.totalDuplicateCount).toBe(0);
+    expect(report.duplicates).toHaveLength(1);
+    expect(report.totalDuplicateCount).toBe(1);
   });
 
   it('totalDuplicateCount correct — 1 URL in 3 groups = count of 2', () => {
@@ -160,7 +161,90 @@ describe('getDuplicateCountForGroup', () => {
   });
 });
 
-// ─── Test Group 3 — URL normalization ───
+// ─── Test Group 3 — computeGroupDuplicateDetails ───
+
+describe('computeGroupDuplicateDetails', () => {
+  it('no groups → returns empty map', () => {
+    const details = computeGroupDuplicateDetails([]);
+    expect(details.size).toBe(0);
+  });
+
+  it('one group → returns empty map (MIN_GROUPS not met)', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com', 'https://a.com']),
+    ]);
+    expect(details.size).toBe(0);
+  });
+
+  it('same-group duplicate only → sameGroup=1, crossGroup=0', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com', 'https://a.com', 'https://b.com']),
+      makeGroup('g2', ['https://c.com']),
+    ]);
+    const g1 = details.get('g1')!;
+    expect(g1.sameGroup).toBe(1);
+    expect(g1.crossGroup).toBe(0);
+    expect(g1.total).toBe(1);
+  });
+
+  it('cross-group duplicate only → sameGroup=0, crossGroup=1', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com', 'https://b.com']),
+      makeGroup('g2', ['https://a.com', 'https://c.com']),
+    ]);
+    const g1 = details.get('g1')!;
+    expect(g1.sameGroup).toBe(0);
+    expect(g1.crossGroup).toBe(1);
+    expect(g1.total).toBe(1);
+  });
+
+  it('both same-group and cross-group → counts both, total is union', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com', 'https://a.com', 'https://b.com']),
+      makeGroup('g2', ['https://b.com']),
+    ]);
+    const g1 = details.get('g1')!;
+    expect(g1.sameGroup).toBe(1);  // a.com repeated in g1
+    expect(g1.crossGroup).toBe(1); // b.com shared with g2
+    expect(g1.total).toBe(2);      // union: a.com + b.com
+  });
+
+  it('URL that is both same-group and cross-group → counted in both but total=1', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com', 'https://a.com']),
+      makeGroup('g2', ['https://a.com']),
+    ]);
+    const g1 = details.get('g1')!;
+    expect(g1.sameGroup).toBe(1);  // a.com repeated in g1
+    expect(g1.crossGroup).toBe(1); // a.com also in g2
+    expect(g1.total).toBe(1);      // only 1 unique duplicate URL
+  });
+
+  it('group with no duplicates → all zeros', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com']),
+      makeGroup('g2', ['https://b.com']),
+    ]);
+    const g1 = details.get('g1')!;
+    expect(g1.sameGroup).toBe(0);
+    expect(g1.crossGroup).toBe(0);
+    expect(g1.total).toBe(0);
+  });
+
+  it('returns details for every group', () => {
+    const details = computeGroupDuplicateDetails([
+      makeGroup('g1', ['https://a.com']),
+      makeGroup('g2', ['https://a.com']),
+      makeGroup('g3', ['https://b.com']),
+    ]);
+    expect(details.size).toBe(3);
+    expect(details.get('g1')!.crossGroup).toBe(1);
+    expect(details.get('g2')!.crossGroup).toBe(1);
+    expect(details.get('g3')!.total).toBe(0);
+  });
+});
+
+// ─── Test Group 4 — URL normalization ───
 
 describe('URL normalization', () => {
   it('https://github.com/ matches https://github.com', () => {

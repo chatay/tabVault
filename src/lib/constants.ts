@@ -51,6 +51,7 @@ export const CATEGORIZATION_LIMITS = {
   BATCH_SIZE: 50,
   MAX_TITLE_LENGTH: 80,
   MAX_TOKENS: 4096,
+  MODEL: 'gpt-4.1-nano',
 } as const;
 
 // === Abuse Detection ===
@@ -71,6 +72,24 @@ export const DUPLICATE_DETECTION = {
   /** Minimum number of groups required to run duplicate detection */
   MIN_GROUPS: 2,
 } as const;
+
+// === Smart Search ===
+export const SMART_SEARCH = {
+  MIN_QUERY_LENGTH: 3,
+  DEBOUNCE_MS: 500,
+  MAX_TABS: 200,
+  MAX_RESULTS: 10,
+  MODEL: 'gpt-4.1-nano',
+  MAX_TOKENS: 2048,
+} as const;
+
+// === Navigation ===
+export const NAV_TAB = {
+  MY_TABS: 'my-tabs',
+  SMART_SEARCH: 'smart-search',
+} as const;
+
+export type NavTab = typeof NAV_TAB[keyof typeof NAV_TAB];
 
 // === UI ===
 export const POPUP_WIDTH_PX = 400;

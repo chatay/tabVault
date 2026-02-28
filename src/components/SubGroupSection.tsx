@@ -5,71 +5,47 @@ import { TabItem } from './TabItem';
 interface SubGroupSectionProps {
   subGroup: SubGroup;
   onOpenTab: (url: string) => void;
+  onDeleteTab: (tabId: string) => void;
 }
 
 export function SubGroupSection({
   subGroup,
   onOpenTab,
+  onDeleteTab,
 }: SubGroupSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div
-      className="rounded-[10px] overflow-hidden"
-      style={{
-        background: 'var(--surface-2)',
-        border: '1px solid var(--border)',
-        marginBottom: '6px',
-      }}
-    >
+    <div className="sub-group-container rounded-[10px] overflow-hidden">
       {/* Sub-group header */}
       <button
-        className="w-full flex items-center gap-[8px] cursor-pointer"
-        style={{
-          padding: '10px 14px',
-          background: 'transparent',
-          border: 'none',
-          fontFamily: "'DM Sans', sans-serif",
-        }}
+        className="sub-group-header w-full flex items-center gap-[8px] cursor-pointer"
         onClick={() => setIsOpen(prev => !prev)}
       >
         <span className="text-[14px]">&#128194;</span>
 
-        <span
-          className="flex-1 text-left text-[13px] font-medium truncate"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <span className="sub-group-name flex-1 text-left text-[13px] font-medium truncate">
           {subGroup.name}
         </span>
 
-        <span
-          className="text-[11px] shrink-0"
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <span className="sub-group-count text-[11px] shrink-0">
           {subGroup.tabs.length} {subGroup.tabs.length === 1 ? 'tab' : 'tabs'}
         </span>
 
-        <span
-          className="text-[13px] shrink-0"
-          style={{
-            color: 'var(--text-muted)',
-            transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease',
-            display: 'inline-block',
-          }}
-        >
+        <span className={`sub-group-chevron text-[13px] shrink-0 ${isOpen ? 'open' : ''}`}>
           &#8250;
         </span>
       </button>
 
       {/* Tabs inside sub-group */}
       {isOpen && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="sub-group-tabs">
           {subGroup.tabs.map(tab => (
             <TabItem
               key={tab.id}
               tab={tab}
               onOpen={onOpenTab}
+              onDelete={onDeleteTab}
             />
           ))}
         </div>

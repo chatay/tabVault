@@ -28,8 +28,7 @@ function highlightMatch(text: string, query: string): ReactNode[] {
     parts.push(
       <mark
         key={index}
-        className="font-semibold rounded-[3px] px-[2px]"
-        style={{ background: 'var(--highlight)', color: 'var(--highlight-text)' }}
+        className="search-highlight font-semibold rounded-[3px] px-[2px]"
       >
         {text.slice(index, index + matchLen)}
       </mark>,
@@ -54,91 +53,39 @@ export function SearchResultItem({
 }: SearchResultItemProps) {
   return (
     <div
-      className="group/result relative flex items-center gap-[13px] rounded-[14px] min-h-[64px] cursor-pointer overflow-hidden"
-      style={{
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        padding: '13px 16px',
-        boxShadow: 'var(--shadow-sm)',
-        transition: 'all 0.15s ease',
-        animation: 'slideIn 0.18s ease both',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border-strong)';
-        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        const bar = e.currentTarget.querySelector<HTMLElement>('[data-accent-bar]');
-        if (bar) bar.style.background = 'var(--accent)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border)';
-        e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-        e.currentTarget.style.transform = 'translateY(0)';
-        const bar = e.currentTarget.querySelector<HTMLElement>('[data-accent-bar]');
-        if (bar) bar.style.background = 'transparent';
-      }}
-      onMouseDown={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-      onMouseUp={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      className="search-result-card group/result relative flex items-center gap-[13px] rounded-[14px] min-h-[64px] cursor-pointer overflow-hidden"
       onClick={() => onOpen(tab.url)}
     >
       {/* Left accent bar */}
-      <div
-        data-accent-bar
-        className="absolute left-0 top-0 bottom-0 w-[3px]"
-        style={{ background: 'transparent', transition: 'background 0.15s ease' }}
-      />
+      <div className="search-result-accent-bar absolute left-0 top-0 bottom-0 w-[3px]" />
 
       {/* Favicon */}
-      <div
-        className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0 overflow-hidden"
-        style={{
-          background: 'var(--surface-2)',
-          border: '1px solid var(--border)',
-        }}
-      >
+      <div className="search-result-favicon w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0 overflow-hidden">
         <FaviconImg url={tab.url} faviconUrl={tab.faviconUrl} size={34} />
       </div>
 
       {/* Body */}
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+        <div className="search-result-title text-[13px] font-medium truncate">
           {highlightMatch(tab.title, query)}
         </div>
-        <div
-          className="text-[11px] truncate mt-[3px]"
-          style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}
-        >
+        <div className="search-result-url text-[11px] truncate mt-[3px]">
           {highlightMatch(tab.url, query)}
         </div>
       </div>
 
       {/* Meta — group pill + date */}
       <div className="flex flex-col items-end gap-[5px] shrink-0 ml-[10px]">
-        <span
-          className="text-[10px] font-medium rounded-full truncate max-w-[150px]"
-          style={{
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-            padding: '3px 8px',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <span className="search-result-pill text-[10px] font-medium rounded-full truncate max-w-[150px]">
           {groupName}
         </span>
-        <span
-          className="text-[10px] whitespace-nowrap"
-          style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}
-        >
+        <span className="search-result-date text-[10px]">
           {groupDate}
         </span>
       </div>
 
       {/* Open arrow */}
-      <span
-        className="text-[13px] shrink-0 opacity-0 group-hover/result:opacity-100 transition-opacity duration-150"
-        style={{ color: 'var(--accent)' }}
-      >
+      <span className="search-result-arrow text-[13px] shrink-0 opacity-0 group-hover/result:opacity-100 transition-opacity duration-150">
         ↗
       </span>
     </div>

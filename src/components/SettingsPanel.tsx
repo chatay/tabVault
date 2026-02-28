@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { UserSettings, UserProfile } from '../lib/types';
 import { SubscriptionTier, CLOUD_FREE_TAB_LIMIT } from '../lib/constants';
+import { getSupabase } from '../lib/supabase';
 // import { getCheckoutUrl } from '../lib/billing'; // TODO: Re-enable for real payments
 import { SyncStatusIndicator } from './SyncStatus';
 import { OtpAuthFlow } from './OtpAuthFlow';
@@ -155,8 +156,12 @@ function AccountLoggedIn({
 
   const showUpgrade = profile.tier === SubscriptionTier.CLOUD_FREE;
 
-  function handleUpgrade() {
-    // TODO: Replace with real payment flow
+  async function handleUpgrade() {
+    const supabase = getSupabase();
+    await supabase
+      .from('profiles')
+      .update({ subscription_tier: SubscriptionTier.CLOUD_PAID })
+      .eq('id', profile.id);
     onProfileChange({ ...profile, tier: SubscriptionTier.CLOUD_PAID });
   }
 

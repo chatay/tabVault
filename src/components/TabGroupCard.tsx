@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TabGroup } from '../lib/types';
+import type { GroupDuplicateDetails } from '../lib/duplicates';
 import { TabItem } from './TabItem';
 import { SubGroupSection } from './SubGroupSection';
 import {
@@ -7,6 +8,7 @@ import {
   TAB_GROUP_INITIAL_VISIBLE,
   TAB_GROUP_LOAD_MORE_BATCH,
   CATEGORIZATION_STATUS,
+  CATEGORIZATION_LIMITS,
 } from '../lib/constants';
 
 interface TabGroupCardProps {
@@ -18,7 +20,7 @@ interface TabGroupCardProps {
   onRenameGroup: (groupId: string, newName: string) => void;
   isSelected?: boolean;
   onToggleSelect?: (groupId: string) => void;
-  duplicateCount?: number;
+  duplicateInfo?: GroupDuplicateDetails;
 }
 
 export function TabGroupCard({
@@ -30,12 +32,11 @@ export function TabGroupCard({
   onRenameGroup,
   isSelected = false,
   onToggleSelect,
-  duplicateCount = 0,
+  duplicateInfo,
 }: TabGroupCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
-  const [isHovered, setIsHovered] = useState(false);
 
   // Keep editName in sync when the group name changes externally (e.g., cloud pull)
   useEffect(() => {
@@ -72,25 +73,17 @@ export function TabGroupCard({
     hour12: true,
   });
 
+  const cardClasses = [
+    'group/card tab-group-card rounded-[14px]',
+    isExpanded ? 'expanded' : '',
+    group.isAutoSave ? 'auto-save' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div
-      className="group/card rounded-[14px] overflow-hidden"
-      style={{
-        background: 'var(--surface)',
-        border: `1px solid ${isExpanded ? 'var(--border-strong)' : 'var(--border)'}`,
-        borderLeft: group.isAutoSave ? '3px solid var(--border-strong)' : undefined,
-        boxShadow: isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)',
-        transition: 'box-shadow 0.15s ease, border-color 0.15s ease, background 0.25s',
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className={cardClasses}>
       {/* Header */}
       <div
-        className="flex items-center gap-[10px] cursor-pointer select-none min-h-[56px]"
-        style={{ padding: '14px 16px' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        className="tab-group-header flex items-center gap-[10px] cursor-pointer select-none min-h-[56px]"
         onClick={() => {
           const next = !isExpanded;
           setIsExpanded(next);
@@ -107,21 +100,14 @@ export function TabGroupCard({
               type="checkbox"
               checked={isSelected}
               onChange={() => onToggleSelect(group.id)}
-              className="w-4 h-4 rounded cursor-pointer"
-              style={{ accentColor: 'var(--accent)' }}
+              className="tab-group-checkbox w-4 h-4 rounded cursor-pointer"
             />
           </label>
         )}
 
         {/* Chevron */}
         <span
-          className="w-[22px] h-[22px] flex items-center justify-center shrink-0 text-[13px]"
-          style={{
-            color: isExpanded ? 'var(--accent)' : 'var(--text-muted)',
-            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), color 0.15s',
-            fontStyle: 'normal',
-          }}
+          className={`tab-group-chevron w-[22px] h-[22px] flex items-center justify-center shrink-0 text-[13px] ${isExpanded ? 'expanded' : ''}`}
         >
           ›
         </span>
@@ -136,12 +122,7 @@ export function TabGroupCard({
               onBlur={handleRenameSubmit}
               onKeyDown={handleKeyDown}
               onClick={(e) => e.stopPropagation()}
-              className="w-full text-[14px] font-semibold rounded-lg px-2 py-0.5 outline-none"
-              style={{
-                border: '1.5px solid var(--accent)',
-                background: 'var(--surface)',
-                color: 'var(--text-primary)',
-              }}
+              className="tab-group-rename-input w-full text-[14px] font-semibold rounded-lg px-2 py-0.5 outline-none"
               autoFocus
             />
           ) : (
@@ -149,27 +130,18 @@ export function TabGroupCard({
               <div
                 className={`text-[14px] truncate ${
                   group.isAutoSave
-                    ? 'font-medium'
-                    : 'font-semibold'
+                    ? 'tab-group-name auto-save font-medium'
+                    : 'tab-group-name font-semibold'
                 }`}
-                style={{
-                  color: group.isAutoSave ? 'var(--text-secondary)' : 'var(--text-primary)',
-                }}
               >
                 {group.name}
               </div>
               {group.summary && (
-                <div
-                  className="text-[12px] truncate mt-[2px]"
-                  style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}
-                >
+                <div className="tab-group-summary text-[12px] truncate mt-[2px]">
                   {group.summary}
                 </div>
               )}
-              <div
-                className="text-[11px] mt-[2px]"
-                style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}
-              >
+              <div className="tab-group-meta text-[11px] mt-[2px]">
                 {group.tabs.length} {group.tabs.length === 1 ? 'tab' : 'tabs'}
                 {group.subGroups && group.subGroups.length > 0
                   ? ` \u00b7 ${group.subGroups.length} sub-groups`
@@ -181,34 +153,25 @@ export function TabGroupCard({
         </div>
 
         {/* Duplicate badge */}
-        {duplicateCount > 0 && (
-          <span
-            className="text-[10px] font-semibold shrink-0 rounded-full whitespace-nowrap"
-            style={{
-              background: 'var(--warning-soft)',
-              border: '1px solid var(--warning-border)',
-              color: 'var(--warning-text)',
-              padding: '2px 7px',
-              letterSpacing: '0.3px',
-            }}
-            title={`${duplicateCount} duplicate ${duplicateCount === 1 ? 'URL' : 'URLs'} found in other groups`}
-          >
-            ⚠️ {duplicateCount} {duplicateCount === 1 ? 'dupe' : 'dupes'}
+        {duplicateInfo && duplicateInfo.total > 0 && (
+          <span className="tooltip-wrap shrink-0">
+            <span className="duplicate-badge text-[11px] font-medium rounded-full whitespace-nowrap cursor-help inline-block">
+              ⚠️ {duplicateInfo.total} {duplicateInfo.total === 1 ? 'dupe' : 'dupes'}
+            </span>
+            <span className="tooltip">
+              {duplicateInfo.sameGroup > 0 && duplicateInfo.crossGroup > 0
+                ? `${duplicateInfo.sameGroup} repeated in this group · ${duplicateInfo.crossGroup} shared with other groups`
+                : duplicateInfo.sameGroup > 0
+                  ? `${duplicateInfo.sameGroup} ${duplicateInfo.sameGroup === 1 ? 'tab appears' : 'tabs appear'} more than once in this group`
+                  : `${duplicateInfo.crossGroup} ${duplicateInfo.crossGroup === 1 ? 'tab' : 'tabs'} also ${duplicateInfo.crossGroup === 1 ? 'exists' : 'exist'} in another group`
+              }
+            </span>
           </span>
         )}
 
         {/* Auto badge */}
         {group.isAutoSave && (
-          <span
-            className="text-[10px] font-semibold shrink-0 rounded-full"
-            style={{
-              background: 'var(--surface-3)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-muted)',
-              padding: '2px 7px',
-              letterSpacing: '0.3px',
-            }}
-          >
+          <span className="auto-badge text-[10px] font-semibold shrink-0 rounded-full">
             AUTO
           </span>
         )}
@@ -217,34 +180,28 @@ export function TabGroupCard({
         <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
           {!group.isAutoSave && (
             <>
-              <ActionBtn
-                title="Restore all"
+              <button
+                className="action-btn w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
                 onClick={(e) => { e.stopPropagation(); onOpenGroup(group.id); }}
+                title="Restore all"
               >
                 ↩
-              </ActionBtn>
-              <ActionBtn
-                title="Rename"
+              </button>
+              <button
+                className="action-btn w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditName(group.name);
                   setIsEditing(true);
                 }}
+                title="Rename"
               >
                 ✏
-              </ActionBtn>
+              </button>
             </>
           )}
           <button
-            className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
-            style={{
-              color: 'var(--red)',
-              border: '1px solid var(--red-border)',
-              background: 'var(--red-soft)',
-              transition: 'all 0.12s ease',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--red-border)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--red-soft)'; }}
+            className="tab-group-delete-btn w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
             onClick={(e) => { e.stopPropagation(); onDeleteGroup(group.id); }}
             title="Delete group"
           >
@@ -256,11 +213,8 @@ export function TabGroupCard({
       {/* Categorization loading indicator */}
       {(group.categorizationStatus === CATEGORIZATION_STATUS.PENDING ||
         group.categorizationStatus === CATEGORIZATION_STATUS.PROCESSING) && (
-        <div
-          className="flex items-center gap-[6px] px-[16px] py-[8px]"
-          style={{ color: 'var(--text-muted)', fontSize: '12px' }}
-        >
-          <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>&#10227;</span>
+        <div className="categorization-loading flex items-center gap-[6px] px-[16px] py-[8px]">
+          <span className="categorization-spinner">&#10227;</span>
           <span>Organizing your tabs...</span>
         </div>
       )}
@@ -269,19 +223,22 @@ export function TabGroupCard({
       {group.tags && group.tags.length > 0 && (
         <div className="flex flex-wrap gap-[4px] px-[16px] py-[8px]">
           {group.tags.map(tag => (
-            <span
-              key={tag}
-              className="text-[10px] font-medium rounded-full"
-              style={{
-                background: 'var(--accent-soft)',
-                border: '1px solid var(--accent)',
-                color: 'var(--accent)',
-                padding: '2px 8px',
-              }}
-            >
+            <span key={tag} className="tag-pill text-[10px] font-medium rounded-full">
               {tag}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* AI categorization info note */}
+      {isExpanded &&
+        !group.subGroups?.length &&
+        group.tabs.length < CATEGORIZATION_LIMITS.MIN_TABS && (
+        <div className="categorization-info-note flex items-center gap-[8px] rounded-[10px] mx-[12px] mb-[12px]">
+          <span className="text-[14px]">💡</span>
+          <span className="categorization-info-text text-[12px]">
+            AI categorization works on groups with {CATEGORIZATION_LIMITS.MIN_TABS} or more tabs
+          </span>
         </div>
       )}
 
@@ -292,7 +249,7 @@ export function TabGroupCard({
           {group.subGroups &&
            group.subGroups.length > 0 &&
            group.categorizationStatus === CATEGORIZATION_STATUS.DONE ? (
-            <div style={{ borderTop: '1px solid var(--border)', padding: '12px' }}>
+            <div className="tab-group-subgroups">
               {[...group.subGroups]
                 .sort((a, b) => {
                   const aIsOther = /^other$/i.test(a.name.trim());
@@ -306,6 +263,7 @@ export function TabGroupCard({
                     key={subGroup.id}
                     subGroup={subGroup}
                     onOpenTab={onOpenTab}
+                    onDeleteTab={(tabId) => onDeleteTab(group.id, tabId)}
                   />
                 ))}
             </div>
@@ -313,11 +271,8 @@ export function TabGroupCard({
             /* Flat tab list fallback */
             <>
               <div
-                style={{
-                  borderTop: '1px solid var(--border)',
-                  maxHeight: `${TAB_LIST_MAX_HEIGHT_PX}px`,
-                  overflowY: 'auto',
-                }}
+                className="tab-list-border overflow-y-auto"
+                style={{ maxHeight: `${TAB_LIST_MAX_HEIGHT_PX}px` }}
               >
                 {group.tabs.slice(0, visibleCount).map((tab) => (
                   <TabItem
@@ -330,18 +285,7 @@ export function TabGroupCard({
               </div>
               {visibleCount < group.tabs.length && (
                 <button
-                  className="w-full text-[12px] font-medium cursor-pointer"
-                  style={{
-                    padding: '10px 16px',
-                    color: 'var(--accent)',
-                    background: 'var(--surface-2)',
-                    border: 'none',
-                    borderTop: '1px solid var(--border)',
-                    fontFamily: "'DM Sans', sans-serif",
-                    transition: 'background 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  className="load-more-btn w-full text-[12px] font-medium cursor-pointer"
                   onClick={() => setVisibleCount((c) => c + TAB_GROUP_LOAD_MORE_BATCH)}
                 >
                   Show {Math.min(TAB_GROUP_LOAD_MORE_BATCH, group.tabs.length - visibleCount)} more of {group.tabs.length - visibleCount} remaining
@@ -352,41 +296,5 @@ export function TabGroupCard({
         </>
       )}
     </div>
-  );
-}
-
-function ActionBtn({
-  children,
-  title,
-  onClick,
-}: {
-  children: React.ReactNode;
-  title: string;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  return (
-    <button
-      className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[13px] cursor-pointer shrink-0"
-      style={{
-        border: '1px solid var(--border)',
-        background: 'var(--surface)',
-        color: 'var(--text-secondary)',
-        transition: 'all 0.12s ease',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--surface-3)';
-        e.currentTarget.style.borderColor = 'var(--border-strong)';
-        e.currentTarget.style.color = 'var(--text-primary)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'var(--surface)';
-        e.currentTarget.style.borderColor = 'var(--border)';
-        e.currentTarget.style.color = 'var(--text-secondary)';
-      }}
-      onClick={onClick}
-      title={title}
-    >
-      {children}
-    </button>
   );
 }

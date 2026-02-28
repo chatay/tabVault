@@ -271,6 +271,45 @@ describe('categorizeTabs — broken Claude responses', () => {
     expect(result).toBeNull();
   });
 
+  it('recovers when model puts natural language inside tabIndexes array', async () => {
+    // Regression for: "xes": [3, Please add"... is not valid JSON
+    const tabs = makeTabs(5);
+    const malformedJson = `{
+      "subGroups": [
+        { "name": "Work", "tabIndexes": [1, 2, Please add more tabs here] },
+        { "name": "Other", "tabIndexes": [3, 4, 5] }
+      ],
+      "summary": "Test session",
+      "tags": ["work"]
+    }`;
+    mockFunctionsInvoke.mockResolvedValueOnce({
+      data: { content: [{ type: 'text', text: malformedJson }] },
+      error: null,
+    });
+
+    const result = await categorizeTabs(tabs);
+    expect(result).not.toBeNull();
+    expect(result!.subGroups.find(sg => sg.name === 'Work')?.tabs).toHaveLength(2);
+    expect(result!.subGroups.find(sg => sg.name === 'Other')?.tabs).toHaveLength(3);
+  });
+
+  it('recovers when model wraps JSON in prose', async () => {
+    const tabs = makeTabs(5);
+    const textWithProse = `Here is the categorization result:\n\n${JSON.stringify({
+      subGroups: [{ name: 'All', tabIndexes: [1, 2, 3, 4, 5] }],
+      summary: 'Five tabs',
+      tags: ['misc'],
+    })}\n\nLet me know if you need more categories.`;
+    mockFunctionsInvoke.mockResolvedValueOnce({
+      data: { content: [{ type: 'text', text: textWithProse }] },
+      error: null,
+    });
+
+    const result = await categorizeTabs(tabs);
+    expect(result).not.toBeNull();
+    expect(result!.subGroups[0].tabs).toHaveLength(5);
+  });
+
   it('returns null when edge function throws', async () => {
     const tabs = makeTabs(5);
     mockFunctionsInvoke.mockRejectedValueOnce(new Error('Failed to fetch'));

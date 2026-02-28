@@ -85,3 +85,11 @@ export type SyncStatus = 'synced' | 'syncing' | 'pending' | 'failed';
 export type SaveResult =
   | { success: true; group: TabGroup }
   | { success: false; limitExceeded: { trying: number; remaining: number } };
+
+export interface SmartSearchResult {
+  tab: SavedTab;
+  groupName: string;
+  groupDate: string;
+  reason: string;
+  score: number;
+}
